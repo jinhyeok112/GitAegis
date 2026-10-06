@@ -251,3 +251,21 @@ npm run lint
 의존성 취약점은 파일명에 더해 패키지와 설치 버전, 영향을 받는 버전 범위, 해당 CVE의 최소 수정 버전을 표시한다. 수정 버전이 없으면 미공개로 안내한다. lodash 목업은 [CVE-2021-23337 공지](https://github.com/advisories/GHSA-35jh-r3h4-6jhm)를 참고하며 저장소와 설치 버전은 예시 데이터이다.
 
 AI 수정 제안은 실제 AI 응답이 아니다. 각 예시 취약점에 미리 작성한 해결 방법, 주요 변경점, 수정 전·후 코드, 적용 후 확인 사항을 표시한다. GitHub 계정명과 아이디도 실제 사용자 정보가 아닌 더미 데이터다.
+
+## DB 설계 검토 화면 (임시)
+
+사이트의 `DB 설계 · 검토용` 메뉴에서 교수님 검토용 ERD를 확인할 수 있다. 테이블 선택 시 연결 관계가 강조되며 전체 컬럼, NULL 허용 여부, PK/FK, 인덱스와 제약을 확인할 수 있다. SQL 원문 보기와 다운로드도 제공한다. 화면은 `database/schema.sql`에서 직접 읽어 생성하며 실제 DB에 연결하거나 데이터를 저장하지 않는다.
+
+임시 메뉴는 `components/dashboard.tsx`의 `menu` 배열에 있는 `database` 항목을 제거하면 숨길 수 있다. 완전히 제거할 때는 해당 뷰와 컴포넌트, `app/page.tsx`의 설계 데이터 전달도 함께 제거한다. 기존 SQL 초안의 미확정 사항(AI 응답 저장, 구독 변경 이력, 청구 집계 연결, 보존 정책)은 화면 하단에 표시한다.
+
+### CVE / CWE 연동 계획
+
+**CVE 데이터 조회는 NIST NVD API 2.0을 이용할 계획이다.** 현재 사이트는 더미 데이터로 동작하며 API를 실제 호출하지 않는다.
+
+- **CVE 상세 조회:** [NVD CVE API](https://nvd.nist.gov/developers/vulnerabilities)의 `GET https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=CVE-2021-23337`로 설명, CVSS, 영향 제품·버전 조건 및 제공된 CWE 분류를 확인한다.
+- **패키지 버전 대조:** lock 파일에서 패키지명·설치 버전을 추출하고 [NVD CPE API](https://nvd.nist.gov/developers/products)의 제품 식별자와 매핑한 뒤 영향 조건을 대조한다. 이름 검색만으로 취약 여부를 확정하지 않는다. 매핑 불확실·정보 누락은 확인 필요로 표시한다.
+- **최소 수정 버전:** NVD 참고 링크의 패키지 공식 보안 공지·릴리스에서 버전 계열별로 확인한다. NVD가 모든 패키지의 수정 버전을 별도 필드로 제공한다고 가정하지 않으며, 근거가 없으면 미확인으로 표시한다.
+- **코드 약점 탐지:** Semgrep 검사 결과와 [규칙 메타데이터](https://github.com/semgrep/semgrep-rules/blob/develop/metadata-schema.yaml.schm)의 CWE를 사용한다. CWE는 약점 유형이며 API 자체로 코드를 검사하지 않는다.
+- **CWE 설명 조회:** [MITRE CWE REST API](https://github.com/CWE-CAPEC/REST-API-wg/blob/main/Quick%20Start.md)의 `GET https://cwe-api.mitre.org/api/v1/cwe/weakness/79` 등으로 약점 설명을 가져온다. 등록·인증 없이 조회 가능하며 XML/CSV 다운로드도 대안이다.
+
+외부 조회는 백엔드에서 수행하고 캐시·재시도·조회 시각을 관리할 계획이다. 현재 SQL은 패키지 버전 및 advisory URL을 저장하지만, CPE 매핑과 복수 CWE 분류, 원본 응답·조회 시각은 별도 구조를 보완해야 한다. 이 연동 계획은 DB 검토 화면에서도 확인할 수 있다.

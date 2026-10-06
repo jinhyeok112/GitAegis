@@ -226,3 +226,49 @@ td code { background: #f1f2f4; padding: 4px 6px; border-radius: 4px; font-size: 
 .settings-empty p { color: #525b68; margin: 9px 0 20px; line-height: 1.5; }
 @media (max-width: 1000px) { .analysis-layout { grid-template-columns: 1fr; } .analysis-repositories { display: flex; flex-wrap: wrap; } .analysis-repositories .panel-heading { width: 100%; } .analysis-repo { flex: 1; min-width: 180px; } }
 @media (max-width: 650px) { .analysis-repo { min-width: 100%; } .analysis-section { padding: 20px 17px; } .schedule-fields { grid-template-columns: 1fr; } .analysis-actions { padding: 17px; } .analysis-status { grid-template-columns: 1fr; } .analysis-status > div + div { border-left: 0; border-top: 1px solid #e0e3e7; padding: 16px 0 0; } }
+
+.db-design { display: grid; gap: 18px; }
+.db-review-banner { display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid #c9cfd7; border-radius: 6px; background: #eef0f3; padding: 19px 22px; }
+.db-review-banner strong { font-size: 15px; }
+.db-review-banner p { font-size: 13px; line-height: 1.6; color: #414a57; margin-top: 6px; }
+.db-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 15px; }
+.db-toolbar > span { font-size: 12px; color: #495361; }
+.db-tabs { display: flex; gap: 5px; }
+.db-tabs button { padding: 10px 14px; border-radius: 5px; font-size: 13px; font-weight: 600; border: 1px solid #c9cfd7; background: white; }
+.db-tabs button[aria-selected=true] { background: #202329; color: white; border-color: #202329; }
+.db-design [role=tabpanel] { display: grid; gap: 20px; }
+.db-diagram-scroll { overflow-x: auto; background: #f8f9fa; border-block: 1px solid #dce1e7; }
+.db-diagram { width: 900px; height: 810px; position: relative; margin: auto; background-image: radial-gradient(#dce1e7 1px,transparent 1px); background-size: 18px 18px; }
+.db-connectors { position: absolute; inset: 0; width: 100%; height: 100%; }
+.db-entity { position: absolute; width: 250px; height: 190px; display: flex; flex-direction: column; text-align: left; background: white; border: 1px solid #9fa9b6; border-radius: 6px; overflow: hidden; }
+.db-entity.selected { border: 2px solid #20252d; box-shadow: 0 3px 12px #20252d18; }
+.db-entity-heading { padding: 12px 14px; background: #edf0f4; border-bottom: 1px solid #d4dae2; display: grid; gap: 5px; }
+.db-entity-heading strong { font-family: monospace; font-size: 15px; }
+.db-entity-heading > span { font-size: 12px; color: #424d5c; }
+.db-entity.selected .db-entity-heading { background: #20252d; color: white; }
+.db-entity.selected .db-entity-heading > span { color: #e4e8ee; }
+.db-entity-keys { padding: 11px 14px 0; display: grid; gap: 5px; }
+.db-entity-keys > span { display: flex; align-items: center; gap: 9px; font-size: 12px; }
+.db-entity-keys b { font-size: 10px; background: #e9edf2; padding: 2px 4px; border-radius: 2px; }
+.db-entity small { margin-top: auto; padding: 8px 14px; font-size: 11px; color: #4d5868; }
+.db-legend { padding: 15px 22px; font-size: 12px; line-height: 1.8; color: #424c59; }
+.db-table-detail h2 > span { font-size: 13px; font-weight: 500; margin-left: 10px; color: #495361; }
+.db-columns { white-space: normal; min-width: 680px; }
+.db-columns td { vertical-align: top; padding: 14px 20px; }
+.db-columns td:first-child { width: 215px; }
+.db-columns td:nth-child(2), .db-columns td:nth-child(3) { white-space: nowrap; }
+.db-columns td:last-child code { display: block; background: transparent; padding: 0; line-height: 1.7; overflow-wrap: anywhere; }
+.db-constraints { padding: 23px 25px; border-top: 1px solid #dce1e7; }
+.db-constraints h3 { font-size: 14px; margin-bottom: 12px; }
+.db-constraints > code { display: block; font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; padding: 5px 0; color: #394352; }
+.db-notes { padding: 25px; }
+.db-notes > div { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-top: 22px; }
+.db-notes h3 { font-size: 14px; margin-bottom: 8px; }
+.db-notes p { font-size: 13px; color: #434e5e; line-height: 1.8; }
+.db-sql pre { margin: 0; padding: 24px; overflow: auto; font-size: 12px; line-height: 1.8; max-height: 75vh; }
+@media (max-width: 760px) { .db-review-banner { align-items: flex-start; flex-direction: column; } .db-toolbar { align-items: flex-start; flex-direction: column; } .db-table-detail .panel-heading { align-items: flex-start; flex-direction: column; } .db-notes > div { grid-template-columns: 1fr; } }
+.db-source-intro { font-size: 13px; color: #434e5e; line-height: 1.8; margin-top: 12px; }
+.db-sources article > code { display: block; background: #f0f2f5; border: 1px solid #d7dde5; padding: 12px; margin-block: 12px; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.db-sources pre { background: #f0f2f5; padding: 12px; font-size: 12px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 12px; }
+.db-sources a { display: block; font-size: 12px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; margin-top: 12px; }
+.db-sources article p + p { margin-top: 10px; }

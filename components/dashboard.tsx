@@ -3,11 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import ActivityChart from "@/components/activity-chart";
 import AnalysisSettings from "@/components/analysis-settings";
+import DatabaseDesignView from "@/components/database-design";
+import type { DatabaseDesign } from "@/lib/database-design";
 import VulnerabilityDetail from "@/components/vulnerability-detail";
 import { repositories as initialRepositories, initialScanPolicies, scans, vulnerabilities, mockUser } from "@/lib/mock-data";
 import type { ScanPolicy, Vulnerability } from "@/lib/types";
 
-type View = "overview" | "repositories" | "analysis" | "vulnerabilities" | "account";
+type View = "overview" | "repositories" | "analysis" | "vulnerabilities" | "account" | "database";
 type IconName = "shield" | "grid" | "repo" | "calendar" | "alert" | "usage" | "search" | "chevron" | "lock" | "check" | "close" | "logout";
 const paths: Record<IconName, string> = {
   shield: "M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6l-8-3Z M9 12l2 2 4-4",
@@ -32,12 +34,14 @@ const menu: { id: View; label: string; icon: IconName }[] = [
   { id: "analysis", label: "분석 설정", icon: "calendar" },
   { id: "vulnerabilities", label: "취약점", icon: "alert" },
   { id: "account", label: "계정 및 사용량", icon: "usage" },
+  // Temporary professor review entry: remove this entry to hide the design screen.
+  { id: "database", label: "DB 설계 · 검토용", icon: "grid" },
 ];
 const severityLabel = { critical: "치명적", high: "높음", medium: "중간", low: "낮음", info: "정보" };
 const statusLabel = { new: "새로 발견", open: "미해결", triaging: "검토 중", resolved: "해결", false_positive: "오탐" };
 const scanStatusLabel = { queued: "대기", running: "검사 중", completed: "완료", failed: "실패" };
 
-export default function Dashboard() {
+export default function Dashboard({ databaseDesign }: { databaseDesign: DatabaseDesign }) {
   const [view, setView] = useState<View>("overview");
   const [repositories, setRepositories] = useState(initialRepositories);
   const [scanPolicies, setScanPolicies] = useState<Record<string, ScanPolicy>>(initialScanPolicies);
@@ -93,7 +97,7 @@ export default function Dashboard() {
   return <div className="workspace">
     <aside className="sidebar"><button className="brand" onClick={() => navigate("overview")} aria-label="GitAegis 대시보드"><span className="brand-symbol"><Icon name="shield" size={22} /></span>GitAegis</button><nav aria-label="주요 메뉴">{menu.map(item => <button key={item.id} className={`nav-item ${view === item.id ? "active" : ""}`} aria-current={view === item.id ? "page" : undefined} onClick={() => navigate(item.id)}><Icon name={item.icon} /><span>{item.label}</span></button>)}</nav><div className="sidebar-bottom"><button className="profile" onClick={() => navigate("account")}><span className="avatar">{mockUser.initial}</span><span><strong>{mockUser.name}</strong><small>@{mockUser.githubLogin}</small></span><Icon name="chevron" size={16} /></button></div></aside>
 
-    <main className="main-content"><header className="page-header"><div><h1>{view === "overview" ? "보안 대시보드" : view === "repositories" ? "Git 저장소 가져오기" : menu.find(item => item.id === view)?.label}</h1><p>{view === "overview" ? "발견된 보안 문제와 검사 추이를 확인하세요." : view === "repositories" ? "검사할 GitHub 저장소를 선택하세요." : view === "analysis" ? "저장소별 커밋 검사와 정기 분석 일정을 설정하세요." : view === "account" ? "GitHub 연결, AI 사용량과 스캔 기록을 관리하세요." : "저장소별로 발견된 취약점을 확인하세요."}</p></div><span className="demo-label">예시 데이터</span></header>
+    <main className="main-content"><header className="page-header"><div><h1>{view === "overview" ? "보안 대시보드" : view === "repositories" ? "Git 저장소 가져오기" : menu.find(item => item.id === view)?.label}</h1><p>{view === "overview" ? "발견된 보안 문제와 검사 추이를 확인하세요." : view === "repositories" ? "검사할 GitHub 저장소를 선택하세요." : view === "analysis" ? "저장소별 커밋 검사와 정기 분석 일정을 설정하세요." : view === "account" ? "GitHub 연결, AI 사용량과 스캔 기록을 관리하세요." : view === "database" ? "교수님 검토용 · 테이블 관계와 데이터 구조를 확인하세요." : "저장소별로 발견된 취약점을 확인하세요."}</p></div><span className="demo-label">예시 데이터</span></header>
 
       {view === "overview" && <>
         <section className="dashboard-summary" aria-label="확인할 항목">
@@ -112,6 +116,7 @@ export default function Dashboard() {
       {view === "vulnerabilities" && <><div className="filter-toolbar">{repositoryFilter()}<label className="repository-filter"><span>종류</span><select aria-label="취약점 종류" value={findingKind} onChange={event => setFindingKind(event.target.value)}><option value="all">취약점 전체</option><option value="code">코드 취약점</option><option value="dependency">의존성 취약점</option></select></label></div>{findingsPanel()}</>}
 
       {view === "analysis" && <AnalysisSettings repositories={connectedRepositories} scans={scans} policies={scanPolicies} onSave={(id, policy) => setScanPolicies(current => ({ ...current, [id]: policy }))} onOpenRepositories={() => navigate("repositories")} />}
+      {view === "database" && <DatabaseDesignView design={databaseDesign} />}
 
       {view === "repositories" && <section><div className="repository-toolbar"><div className="account-select"><Icon name="repo" /><span>@{mockUser.githubLogin}</span><span className="connection-text">GitHub 연결됨</span></div><label className="search-field"><Icon name="search" /><input aria-label="저장소 검색" placeholder="저장소 검색" value={search} onChange={event => setSearch(event.target.value)} /></label></div><div className="panel import-list">{filteredRepos.map(repo => <div className="import-row" key={repo.id}><span className="repo-avatar">{repo.name[0].toUpperCase()}</span><span className="import-name"><strong>{repo.name}</strong><span><Icon name="lock" size={13} />{repo.visibility === "private" ? "비공개" : "공개"} · {repo.connected ? "연결됨" : recordedRepositoryIds.has(repo.id) ? "연결 해제 · 기록 보관" : "연결 가능"}</span></span><button className={`button ${repo.connected ? "secondary" : "primary"}`} onClick={() => toggleRepository(repo.id)}>{repo.connected ? "연결 해제" : "가져오기"}</button></div>)}{filteredRepos.length === 0 && <p className="empty-state">검색 결과가 없습니다.</p>}</div></section>}
 

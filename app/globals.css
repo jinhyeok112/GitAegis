@@ -237,20 +237,6 @@ td code { background: #f1f2f4; padding: 4px 6px; border-radius: 4px; font-size: 
 .db-tabs button { padding: 10px 14px; border-radius: 5px; font-size: 13px; font-weight: 600; border: 1px solid #c9cfd7; background: white; }
 .db-tabs button[aria-selected=true] { background: #202329; color: white; border-color: #202329; }
 .db-design [role=tabpanel] { display: grid; gap: 20px; }
-.db-diagram-scroll { overflow-x: auto; background: #f8f9fa; border-block: 1px solid #dce1e7; }
-.db-diagram { width: 900px; height: 810px; position: relative; margin: auto; background-image: radial-gradient(#dce1e7 1px,transparent 1px); background-size: 18px 18px; }
-.db-connectors { position: absolute; inset: 0; width: 100%; height: 100%; }
-.db-entity { position: absolute; width: 250px; height: 190px; display: flex; flex-direction: column; text-align: left; background: white; border: 1px solid #9fa9b6; border-radius: 6px; overflow: hidden; }
-.db-entity.selected { border: 2px solid #20252d; box-shadow: 0 3px 12px #20252d18; }
-.db-entity-heading { padding: 12px 14px; background: #edf0f4; border-bottom: 1px solid #d4dae2; display: grid; gap: 5px; }
-.db-entity-heading strong { font-family: monospace; font-size: 15px; }
-.db-entity-heading > span { font-size: 12px; color: #424d5c; }
-.db-entity.selected .db-entity-heading { background: #20252d; color: white; }
-.db-entity.selected .db-entity-heading > span { color: #e4e8ee; }
-.db-entity-keys { padding: 11px 14px 0; display: grid; gap: 5px; }
-.db-entity-keys > span { display: flex; align-items: center; gap: 9px; font-size: 12px; }
-.db-entity-keys b { font-size: 10px; background: #e9edf2; padding: 2px 4px; border-radius: 2px; }
-.db-entity small { margin-top: auto; padding: 8px 14px; font-size: 11px; color: #4d5868; }
 .db-legend { padding: 15px 22px; font-size: 12px; line-height: 1.8; color: #424c59; }
 .db-table-detail h2 > span { font-size: 13px; font-weight: 500; margin-left: 10px; color: #495361; }
 .db-columns { white-space: normal; min-width: 680px; }
@@ -272,3 +258,74 @@ td code { background: #f1f2f4; padding: 4px 6px; border-radius: 4px; font-size: 
 .db-sources pre { background: #f0f2f5; padding: 12px; font-size: 12px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 12px; }
 .db-sources a { display: block; font-size: 12px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; margin-top: 12px; }
 .db-sources article p + p { margin-top: 10px; }
+.db-flow-main { padding: 24px; border-block: 1px solid #dbe0e6; background: #f6f7f9; }
+.db-lane-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 20px; }
+.db-lane-tag { background: #23272f; color: white; padding: 5px 8px; font-size: 11px; font-weight: 650; border-radius: 3px; white-space: nowrap; }
+.db-lane-heading p { font-size: 13px; line-height: 1.6; color: #424b58; }
+.db-lane-heading h3 { font-size: 16px; }
+.db-main-steps { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 34px; list-style: none; padding: 0; margin: 0; }
+.db-main-steps > li { position: relative; min-width: 0; }
+.db-step-label { display: flex; gap: 8px; align-items: center; font-size: 13px; font-weight: 650; margin-bottom: 13px; }
+.db-step-label b { display: grid; place-items: center; width: 22px; height: 22px; background: #dfe4ea; border-radius: 50%; font-size: 11px; }
+.db-flow-entity { width: 100%; height: 215px; display: flex; flex-direction: column; text-align: left; background: white; border: 1px solid #9da7b4; border-radius: 5px; overflow: hidden; }
+.db-flow-entity:hover { border-color: #20252d; box-shadow: 0 2px 8px #20252d15; }
+.db-flow-entity.related { border-color: #333e4d; border-width: 2px; }
+.db-flow-entity.selected { border: 2px solid #20252d; box-shadow: 0 2px 8px #20252d18; }
+.db-flow-title { display: grid; gap: 8px; padding: 15px 12px; background: #edf0f4; border-bottom: 1px solid #d4dae2; }
+.db-flow-title strong { font-size: 15px; }
+.db-flow-title > code { font-size: 11px; color: #495466; overflow-wrap: anywhere; }
+.db-flow-entity.selected .db-flow-title { background: #23272f; color: white; }
+.db-flow-entity.selected .db-flow-title > code { color: #e2e6ed; }
+.db-flow-keys { display: grid; gap: 7px; padding: 12px; }
+.db-flow-keys > span { display: flex; align-items: baseline; gap: 7px; font-size: 11px; }
+.db-flow-keys code { overflow-wrap: anywhere; min-width: 0; }
+.db-flow-keys b { font-size: 10px; background: #e9edf2; padding: 2px 4px; border-radius: 2px; flex-shrink: 0; }
+.db-flow-entity small { margin-top: auto; padding: 10px 12px; font-size: 11px; color: #505b6a; }
+.db-flow-link { position: absolute; right: -32px; top: 112px; width: 30px; display: flex; flex-direction: column; align-items: center; gap: 4px; color: #343e4c; }
+.db-flow-link b { font-size: 9px; white-space: nowrap; }
+.db-flow-link > span { font-size: 24px; }
+.db-flow-explanation { padding: 17px 19px; border: 1px solid #ccd3dd; border-left: 3px solid #313a48; border-radius: 4px; background: white; margin-top: 22px; font-size: 12px; line-height: 1.8; }
+.db-flow-explanation > strong { font-size: 13px; }
+.db-flow-explanation p { margin-top: 5px; color: #3b4655; }
+.db-flow-explanation > span { display: block; color: #495363; margin-top: 6px; }
+.db-support-flows { display: grid; }
+.db-support-lane { padding: 24px; border-bottom: 1px solid #dce1e7; }
+.db-support-lane .db-lane-tag { background: #e7ebf0; color: #303a48; }
+.db-support-lane .db-lane-heading { margin-bottom: 8px; }
+.db-branch-origin { font-size: 13px; color: #485363; line-height: 1.6; margin-bottom: 20px; }
+.db-account-flow { display: grid; grid-template-columns: 1fr 65px 1fr 65px 1fr; align-items: center; }
+.db-flow-entity.compact { height: 205px; }
+.db-inline-link { display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 11px; color: #3b4655; }
+.db-inline-link b { font-size: 24px; }
+.db-branch-reference { display: flex; gap: 15px; background: #f1f3f6; border-radius: 4px; padding: 13px 16px; margin-top: 18px; font-size: 12px; line-height: 1.7; }
+.db-branch-reference strong { white-space: nowrap; }
+.db-branch-reference > span { color: #434f60; }
+.db-management-flow { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.db-branch-label { display: block; font-size: 12px; font-weight: 650; margin-bottom: 12px; }
+.db-management-flow p { color: #4a5666; font-size: 12px; line-height: 1.7; margin-top: 10px; }
+.db-all-relations summary { cursor: pointer; padding: 18px 24px; font-size: 13px; font-weight: 650; }
+@media (max-width: 1100px) and (min-width: 761px) { .db-flow-main, .db-support-lane { padding: 20px 16px; } .db-main-steps { gap: 26px; } .db-flow-link { right: -26px; width: 25px; } .db-flow-title strong { font-size: 13px; } .db-flow-title, .db-flow-keys { padding-inline: 9px; } .db-flow-keys > span { font-size: 10px; } }
+@media (max-width: 600px) {
+  .db-flow-main, .db-support-lane { padding: 20px 17px; }
+  .db-main-steps { grid-template-columns: 1fr; gap: 45px; }
+  .db-flow-entity, .db-flow-entity.compact { height: auto; min-height: 170px; }
+  .db-flow-link { top: auto; right: calc(50% - 16px); bottom: -41px; flex-direction: row; width: auto; gap: 8px; }
+  .db-flow-link > span, .db-inline-link b { display: inline-block; transform: rotate(90deg); }
+  .db-account-flow { grid-template-columns: 1fr; gap: 12px; }
+  .db-inline-link { flex-direction: row; justify-content: center; gap: 10px; }
+  .db-management-flow { grid-template-columns: 1fr; }
+  .db-branch-reference { flex-direction: column; gap: 5px; }
+}
+.db-billing-flow { padding: 0; background: #fafbfc; }
+.db-billing-flow > summary { display: flex; align-items: center; gap: 12px; cursor: pointer; padding: 15px 24px; font-size: 13px; font-weight: 600; }
+.db-billing-flow > summary::before { content: '▸'; color: #566170; }
+.db-billing-flow[open] > summary::before { content: '▾'; }
+.db-billing-flow > summary small { font-size: 11px; font-weight: 400; color: #556170; margin-left: auto; }
+.db-billing-body { padding: 0 24px 18px; }
+.db-billing-body .db-branch-origin { font-size: 12px; margin-bottom: 13px; }
+.db-billing-body .db-flow-entity.compact { height: 110px; min-height: 0; }
+.db-billing-body .db-flow-keys { display: none; }
+.db-billing-body .db-flow-title { padding: 10px 12px; gap: 5px; }
+.db-billing-body .db-flow-title strong { font-size: 13px; }
+.db-billing-body .db-branch-reference { margin-top: 12px; padding: 10px 12px; font-size: 11px; }
+@media (max-width: 600px) { .db-billing-flow > summary { padding-inline: 17px; flex-wrap: wrap; } .db-billing-body { padding-inline: 17px; } }

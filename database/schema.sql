@@ -1,5 +1,5 @@
--- GitAegis 초기 논리 설계를 옮긴 MySQL 8 초안입니다.
--- 실제 인증, 결제, 검사 연동 전에 키 정책과 보존 기간을 확정하세요.
+-- GitAegis MySQL 8 스키마. 초기화는 scripts/db-init.mjs로 실행합니다.
+-- 기존 데이터는 삭제하지 않으며 GitHub 토큰은 암호문으로만 보관합니다.
 
 CREATE TABLE users (
   id CHAR(36) PRIMARY KEY,
@@ -8,6 +8,14 @@ CREATE TABLE users (
   email VARCHAR(320) NULL,
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+);
+
+CREATE TABLE github_accounts (
+  user_id CHAR(36) PRIMARY KEY,
+  encrypted_access_token TEXT NOT NULL,
+  scope VARCHAR(1000) NOT NULL,
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  CONSTRAINT fk_github_accounts_user FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
 CREATE TABLE subscriptions (

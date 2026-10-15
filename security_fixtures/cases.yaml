@@ -1,0 +1,86 @@
+rules:
+  - id: gitaegis-fixture-sql-injection
+    languages: [python]
+    severity: ERROR
+    message: "TEST FIXTURE (CWE-89): untrusted text enters SQL syntax; use parameters."
+    metadata:
+      category: security
+      cwe: ["CWE-89: SQL Injection"]
+      gitaegis_fixture: true
+    mode: taint
+    pattern-sources:
+      - pattern: fixture_input(...)
+    pattern-sinks:
+      - patterns:
+          - pattern: fixture_sink.execute($QUERY, ...)
+          - focus-metavariable: $QUERY
+
+  - id: gitaegis-fixture-command-injection
+    languages: [python]
+    severity: ERROR
+    message: "TEST FIXTURE (CWE-78): untrusted text enters a shell command; pass arguments without a shell."
+    metadata:
+      category: security
+      cwe: ["CWE-78: OS Command Injection"]
+      gitaegis_fixture: true
+    mode: taint
+    pattern-sources:
+      - pattern: fixture_input(...)
+    pattern-sinks:
+      - patterns:
+          - pattern: fixture_sink.run($COMMAND, shell=True)
+          - focus-metavariable: $COMMAND
+
+  - id: gitaegis-fixture-path-traversal
+    languages: [python]
+    severity: WARNING
+    message: "TEST FIXTURE (CWE-22): untrusted text enters a path; allow only approved file names."
+    metadata:
+      category: security
+      cwe: ["CWE-22: Path Traversal"]
+      gitaegis_fixture: true
+    mode: taint
+    pattern-sources:
+      - pattern: fixture_input(...)
+    pattern-sanitizers:
+      - pattern: allow_filename(...)
+    pattern-sinks:
+      - patterns:
+          - pattern: fixture_sink.read($PATH)
+          - focus-metavariable: $PATH
+
+  - id: gitaegis-fixture-html-injection
+    languages: [python]
+    severity: WARNING
+    message: "TEST FIXTURE (CWE-79): untrusted text enters HTML; escape text for its output context."
+    metadata:
+      category: security
+      cwe: ["CWE-79: Cross-site Scripting"]
+      gitaegis_fixture: true
+    mode: taint
+    pattern-sources:
+      - pattern: fixture_input(...)
+    pattern-sanitizers:
+      - pattern: html.escape(...)
+    pattern-sinks:
+      - patterns:
+          - pattern: fixture_sink.render($HTML)
+          - focus-metavariable: $HTML
+
+  - id: gitaegis-fixture-open-redirect
+    languages: [python]
+    severity: WARNING
+    message: "TEST FIXTURE (CWE-601): untrusted redirect target; allow only approved internal destinations."
+    metadata:
+      category: security
+      cwe: ["CWE-601: Open Redirect"]
+      gitaegis_fixture: true
+    mode: taint
+    pattern-sources:
+      - pattern: fixture_input(...)
+    pattern-sanitizers:
+      - pattern: allow_redirect(...)
+    pattern-sinks:
+      - patterns:
+          - pattern: fixture_sink.redirect($TARGET)
+          - focus-metavariable: $TARGET

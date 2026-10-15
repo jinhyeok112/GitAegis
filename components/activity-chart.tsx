@@ -1,16 +1,9 @@
-import { activity } from "@/lib/mock-data";
+import type { ActivityDay } from "@/lib/types";
 
-export default function ActivityChart({ repositoryId }: { repositoryId: string }) {
-  const days = activity.map(day => {
-    const records = day.repositories.filter(repo => repositoryId === "all" || repo.id === repositoryId);
-    return {
-      date: day.date,
-      scans: records.reduce((sum, repo) => sum + repo.scans, 0),
-      findings: records.reduce((sum, repo) => sum + repo.findings, 0),
-    };
-  });
+export default function ActivityChart({ days }: { days: ActivityDay[] }) {
   const totalScans = days.reduce((sum, day) => sum + day.scans, 0);
   const totalFindings = days.reduce((sum, day) => sum + day.findings, 0);
+  if (totalScans === 0) return <section className="panel activity-panel"><div className="panel-heading"><h2>검사 활동</h2><span className="secondary-text">최근 7일</span></div><p className="empty-state">완료된 검사 이력이 없습니다. 실제 검사가 실행되면 활동을 표시합니다.</p></section>;
   const max = Math.max(3, Math.ceil(Math.max(...days.flatMap(day => [day.scans, day.findings])) / 3) * 3);
   const x = (index: number) => 52 + index * 100;
   const y = (value: number) => 214 - (value / max) * 176;

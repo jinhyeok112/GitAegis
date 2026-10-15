@@ -12,6 +12,9 @@ next-env.d.ts
 # Test reports and caches
 coverage/
 .turbo/
+.tools/
+__pycache__/
+*.pyc
 .eslintcache
 
 # Local environment files (keep the configuration template)

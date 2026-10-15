@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { defaultScanPolicy } from "@/lib/mock-data";
+import { defaultScanPolicy } from "@/lib/scan-policy";
 import type { Repository, Scan, ScanPolicy } from "@/lib/types";
 
 const weekdays = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"];
@@ -16,15 +16,17 @@ export default function AnalysisSettings({ repositories, scans, policies, onSave
   repositories: Repository[];
   scans: Scan[];
   policies: Record<string, ScanPolicy>;
-  onSave: (repositoryId: string, policy: ScanPolicy) => void;
+  onSave: (repositoryId: string, policy: ScanPolicy) => Promise<void>;
   onOpenRepositories: () => void;
 }) {
   const [selectedId, setSelectedId] = useState(repositories[0]?.id ?? "");
   const [drafts, setDrafts] = useState<Record<string, ScanPolicy>>({});
   const [savedId, setSavedId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const selected = repositories.find(repo => repo.id === selectedId);
   const draft = drafts[selectedId] ?? policies[selectedId] ?? defaultScanPolicy;
-  const latestScan = scans.filter(scan => scan.repositoryId === selectedId).at(-1);
+  const latestScan = scans.find(scan => scan.repositoryId === selectedId);
   const isDirty = selected ? JSON.stringify(draft) !== JSON.stringify(policies[selectedId] ?? defaultScanPolicy) : false;
   const validTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(draft.time);
 
@@ -38,15 +40,20 @@ export default function AnalysisSettings({ repositories, scans, policies, onSave
     setSavedId(null);
   }
 
-  function save() {
+  async function save() {
     if (!selected) return;
-    onSave(selected.id, { ...draft });
-    setDrafts(current => {
-      const next = { ...current };
-      delete next[selected.id];
-      return next;
-    });
-    setSavedId(selected.id);
+    setSaving(true);
+    setSaveError("");
+    try {
+      await onSave(selected.id, { ...draft });
+      setDrafts(current => {
+        const next = { ...current };
+        delete next[selected.id];
+        return next;
+      });
+      setSavedId(selected.id);
+    } catch (error) { setSaveError(error instanceof Error ? error.message : "설정을 저장하지 못했습니다."); }
+    finally { setSaving(false); }
   }
 
   if (repositories.length === 0) return <section className="panel settings-empty">
@@ -83,13 +90,13 @@ export default function AnalysisSettings({ repositories, scans, policies, onSave
           </div>
           <p className="schedule-preview">설정된 실행 일정 <strong>{scheduleLabel(draft)}</strong></p>
         </div>
-        <div className="analysis-actions"><span role="status">{draft.scheduledEnabled && !validTime ? "정기 분석 시각을 입력해 주세요." : savedId === selectedId ? "이 화면의 예시 설정을 저장했습니다." : isDirty ? "변경 사항을 저장해 주세요." : ""}</span><button type="button" className="button primary" disabled={!isDirty || (draft.scheduledEnabled && !validTime)} onClick={save}>설정 저장</button></div>
+        <div className="analysis-actions"><span role="status">{saveError || (draft.scheduledEnabled && !validTime ? "정기 분석 시각을 입력해 주세요." : savedId === selectedId ? "설정을 DB에 저장했습니다." : isDirty ? "변경 사항을 저장해 주세요." : "")}</span><button type="button" className="button primary" disabled={saving || !isDirty || (draft.scheduledEnabled && !validTime)} onClick={() => void save()}>{saving ? "저장 중…" : "설정 저장"}</button></div>
       </section>
       <section className="panel analysis-status" aria-label="분석 상태 요약">
         <div><span>마지막 검사</span><strong>{latestScan?.startedAt ?? "기록 없음"}</strong></div>
         <div><span>정기 분석</span><strong>{scheduleLabel(policies[selectedId] ?? defaultScanPolicy)}</strong></div>
       </section>
-      <p className="analysis-mock-note">프론트엔드 목업입니다. 설정 저장은 현재 화면에만 반영되며 실제 예약이나 검사는 실행되지 않습니다.</p>
+      <p className="analysis-service-note">설정은 DB에 저장됩니다. 자동 검사 실행기는 아직 연결되지 않아 실제 예약이나 검사는 실행되지 않습니다.</p>
     </div>
   </div>;
 }

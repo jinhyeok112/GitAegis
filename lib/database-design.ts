@@ -15,7 +15,7 @@ export function parseDatabaseDesign(sql: string): DatabaseDesign {
     });
     for (const constraint of constraints) {
       const fk = constraint.match(/FOREIGN KEY \((\w+)\) REFERENCES (\w+)\((\w+)\)/);
-      if (fk) relations.push({ from: name, column: fk[1], to: fk[2], target: fk[3], optional: columns.find(column => column.name === fk[1])!.nullable, unique: columns.find(column => column.name === fk[1])!.definition.includes("UNIQUE") });
+      if (fk) relations.push({ from: name, column: fk[1], to: fk[2], target: fk[3], optional: columns.find(column => column.name === fk[1])!.nullable, unique: columns.find(column => column.name === fk[1])!.primary || columns.find(column => column.name === fk[1])!.definition.includes("UNIQUE") });
     }
     return { name, columns, constraints };
   });

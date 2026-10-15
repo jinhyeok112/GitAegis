@@ -11,7 +11,7 @@ const pretendard = localFont({
 
 export const metadata: Metadata = {
   title: "GitAegis | 보안 취약점 진단",
-  description: "GitHub 저장소의 보안 위험을 확인하는 GitAegis 프로토타입",
+  description: "GitHub 저장소를 연결하고 보안 위험을 확인하는 GitAegis",
 };
 
 export default function RootLayout({

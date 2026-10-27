@@ -22,6 +22,8 @@ try {
   await connection.query(`USE \`${database}\``);
   const schema = await readFile(new URL("../database/schema.sql", import.meta.url), "utf8");
   await connection.query(schema.replaceAll("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
+  const [scopeColumns] = await connection.query("SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema = ? AND table_name = 'scans' AND column_name = 'scan_scope'", [database]);
+  if (!scopeColumns.length) await connection.query("ALTER TABLE scans ADD COLUMN scan_scope ENUM('unknown', 'sast', 'sast_dependency') NOT NULL DEFAULT 'unknown' AFTER status");
   const [rows] = await connection.query("SELECT COUNT(*) AS count FROM information_schema.tables WHERE table_schema = ?", [database]);
   console.log(`MySQL schema ready: ${rows[0].count} tables. Existing records preserved.`);
 } catch (error) {

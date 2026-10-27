@@ -68,6 +68,7 @@ CREATE TABLE scans (
   commit_sha CHAR(40) NULL,
   base_commit_sha CHAR(40) NULL,
   status ENUM('queued', 'running', 'completed', 'failed', 'canceled') NOT NULL DEFAULT 'queued',
+  scan_scope ENUM('unknown', 'sast', 'sast_dependency') NOT NULL DEFAULT 'unknown',
   sast_count INT UNSIGNED NOT NULL DEFAULT 0,
   dependency_count INT UNSIGNED NOT NULL DEFAULT 0,
   error_message TEXT NULL,

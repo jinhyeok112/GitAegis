@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomUUID, randomBytes, createCipheriv } from "node:crypto";
+import { randomUUID, randomBytes, createCipheriv, createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
 import { before, after, test } from "node:test";
@@ -148,6 +148,75 @@ test("saved connections survive an application server restart", async () => {
   const data = await (await request("/api/dashboard")).json();
   assert.equal(data.repositories[0].id, repositoryId);
   assert.deepEqual(data.scanPolicies[repositoryId], policy);
+});
+
+test("manual scan rejects other owners, disconnected repositories, and cross-site requests", async () => {
+  assert.equal((await request(`/api/repositories/${otherRepositoryId}/scans`, { method: "POST" })).status, 404);
+  assert.equal((await request(`/api/repositories/${repositoryId}/scans`, { method: "POST", headers: { origin: "https://untrusted.example" } })).status, 403);
+  await request("/api/repositories", { method: "POST", body: JSON.stringify({ githubRepositoryId: "101", connected: false }) });
+  assert.equal((await request(`/api/repositories/${repositoryId}/scans`, { method: "POST" })).status, 409);
+  await request("/api/repositories", { method: "POST", body: JSON.stringify({ githubRepositoryId: "101", connected: true }) });
+});
+
+test("manual scan refuses a concurrent worker without creating a scan row", async () => {
+  const lock = `gitaegis:scan:${createHash("sha256").update(database).digest("hex").slice(0, 24)}`;
+  await db.execute("SELECT GET_LOCK(?, 0)", [lock]);
+  const [before] = await db.execute("SELECT COUNT(*) AS count FROM scans");
+  try {
+    const response = await request(`/api/repositories/${repositoryId}/scans`, { method: "POST" });
+    assert.equal(response.status, 409);
+    const [after] = await db.execute("SELECT COUNT(*) AS count FROM scans");
+    assert.equal(after[0].count, before[0].count);
+  } finally { await db.execute("SELECT RELEASE_LOCK(?)", [lock]); }
+});
+
+test("manual scan runs real Semgrep and saves commit, findings, snippets, and SAST scope", async () => {
+  const interrupted = randomUUID();
+  await db.execute("INSERT INTO scans (id, repository_id, trigger_type, status, started_at) VALUES (?, ?, 'manual', 'running', UTC_TIMESTAMP(3))", [interrupted, repositoryId]);
+  const response = await request(`/api/repositories/${repositoryId}/scans`, { method: "POST" });
+  const result = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(result));
+  assert.equal(result.findings, 6);
+  assert.equal(result.commitSha, "a".repeat(40));
+  const data = await (await request("/api/dashboard")).json();
+  const scan = data.scans.find(item => item.id === result.scanId);
+  assert.equal(scan.status, "completed");
+  assert.equal(scan.scope, "sast");
+  assert.equal(scan.sastCount, 6);
+  const [findings] = await db.execute("SELECT f.code_snippet, v.severity, v.title FROM scan_findings f JOIN vulnerabilities v ON v.id = f.vulnerability_id WHERE f.scan_id = ?", [result.scanId]);
+  assert.equal(findings.length, 6);
+  assert.equal(findings.filter(item => item.title.startsWith("검사용 샘플 · ") && item.severity === "info").length, 5);
+  assert.ok(findings.every(item => item.code_snippet.length > 0));
+  const redirect = data.vulnerabilities.find(item => item.description.includes("외부 리다이렉트 패턴"));
+  assert.equal(redirect.isTestFixture, true);
+  assert.match(redirect.impact, /피싱/);
+  const tls = data.vulnerabilities.find(item => item.description.includes("TLS 인증서"));
+  assert.equal(tls.isTestFixture, false);
+  assert.match(tls.impact, /중간자 공격/);
+  const [previous] = await db.execute("SELECT status FROM scans WHERE id = ?", [interrupted]);
+  assert.equal(previous[0].status, "failed");
+});
+
+test("repeated manual scans reuse findings rather than duplicating vulnerabilities", async () => {
+  await db.execute("UPDATE vulnerabilities SET impact = 'old generic impact' WHERE repository_id = ? AND external_id = 'gitaegis-fixture-open-redirect'", [repositoryId]);
+  const [before] = await db.execute("SELECT COUNT(*) AS count FROM vulnerabilities WHERE repository_id = ?", [repositoryId]);
+  const response = await request(`/api/repositories/${repositoryId}/scans`, { method: "POST" });
+  const result = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(result));
+  const [after] = await db.execute("SELECT COUNT(*) AS count FROM vulnerabilities WHERE repository_id = ?", [repositoryId]);
+  assert.equal(after[0].count, before[0].count);
+  const [updated] = await db.execute("SELECT impact FROM vulnerabilities WHERE repository_id = ? AND external_id = 'gitaegis-fixture-open-redirect'", [repositoryId]);
+  assert.match(updated[0].impact, /피싱/);
+});
+
+test("invalid source archive is recorded as a failed scan without replacing previous results", async () => {
+  await request("/api/repositories", { method: "POST", body: JSON.stringify({ githubRepositoryId: "102", connected: true }) });
+  const [rows] = await db.execute("SELECT id FROM repositories WHERE user_id = ? AND github_repository_id = 102", [userId]);
+  const response = await request(`/api/repositories/${rows[0].id}/scans`, { method: "POST" });
+  assert.equal(response.status, 422);
+  const [scans] = await db.execute("SELECT status, error_message FROM scans WHERE repository_id = ?", [rows[0].id]);
+  assert.equal(scans[0].status, "failed");
+  assert.ok(scans[0].error_message);
 });
 
 test("database failure returns an error instead of fake empty results", async () => {

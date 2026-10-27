@@ -2,11 +2,12 @@ rules:
   - id: gitaegis-fixture-sql-injection
     languages: [python]
     severity: ERROR
-    message: "TEST FIXTURE (CWE-89): untrusted text enters SQL syntax; use parameters."
+    message: "SQL 삽입 패턴(CWE-89): 외부 입력을 SQL 문자열에 직접 결합합니다. 입력값을 쿼리 매개변수로 분리하세요. 실제 DB를 호출하지 않는 검사용 모형 코드입니다."
     metadata:
       category: security
       cwe: ["CWE-89: SQL Injection"]
       gitaegis_fixture: true
+      gitaegis_impact: "실제 DB 쿼리에 이 패턴을 사용하면 입력값이 SQL 구문을 바꿔 의도하지 않은 데이터 조회·변경·삭제나 인증 우회를 일으킬 수 있습니다. 실제 영향은 쿼리와 DB 계정 권한에 따라 달라집니다."
     mode: taint
     pattern-sources:
       - pattern: fixture_input(...)
@@ -18,11 +19,12 @@ rules:
   - id: gitaegis-fixture-command-injection
     languages: [python]
     severity: ERROR
-    message: "TEST FIXTURE (CWE-78): untrusted text enters a shell command; pass arguments without a shell."
+    message: "명령 삽입 패턴(CWE-78): 외부 입력을 셸 명령 문자열에 직접 결합합니다. 셸을 사용하지 않고 인수 배열로 전달하세요. 실제 명령을 실행하지 않는 검사용 모형 코드입니다."
     metadata:
       category: security
       cwe: ["CWE-78: OS Command Injection"]
       gitaegis_fixture: true
+      gitaegis_impact: "실제 셸 실행에 이 패턴을 사용하면 공격자가 추가 명령을 실행해 서버 파일이나 데이터에 접근할 수 있습니다. 실제 영향은 실행 계정의 권한과 입력값 검증 여부에 따라 달라집니다."
     mode: taint
     pattern-sources:
       - pattern: fixture_input(...)
@@ -34,11 +36,12 @@ rules:
   - id: gitaegis-fixture-path-traversal
     languages: [python]
     severity: WARNING
-    message: "TEST FIXTURE (CWE-22): untrusted text enters a path; allow only approved file names."
+    message: "경로 조작 패턴(CWE-22): 외부 입력을 파일 경로에 직접 결합합니다. 허용된 파일명만 선택하도록 제한하세요. 실제 파일을 읽지 않는 검사용 모형 코드입니다."
     metadata:
       category: security
       cwe: ["CWE-22: Path Traversal"]
       gitaegis_fixture: true
+      gitaegis_impact: "실제 파일 읽기에 이 패턴을 사용하면 ../ 같은 입력으로 허용된 폴더를 벗어나 설정 파일이나 민감한 데이터를 읽을 수 있습니다. 실제 영향은 접근 가능한 경로와 파일 권한에 따라 달라집니다."
     mode: taint
     pattern-sources:
       - pattern: fixture_input(...)
@@ -52,11 +55,12 @@ rules:
   - id: gitaegis-fixture-html-injection
     languages: [python]
     severity: WARNING
-    message: "TEST FIXTURE (CWE-79): untrusted text enters HTML; escape text for its output context."
+    message: "HTML 삽입 패턴(CWE-79): 외부 입력을 HTML 문자열에 직접 삽입합니다. 출력 위치에 맞게 HTML 특수문자를 이스케이프하세요. 실제 화면에 출력하지 않는 검사용 모형 코드입니다."
     metadata:
       category: security
       cwe: ["CWE-79: Cross-site Scripting"]
       gitaegis_fixture: true
+      gitaegis_impact: "실제 HTML 응답에 이 패턴을 사용하면 공격자가 삽입한 스크립트가 방문자의 브라우저에서 실행될 수 있습니다. 페이지 내용 변조나 사용자 권한으로 요청을 보내는 등의 피해가 발생할 수 있습니다."
     mode: taint
     pattern-sources:
       - pattern: fixture_input(...)
@@ -70,11 +74,12 @@ rules:
   - id: gitaegis-fixture-open-redirect
     languages: [python]
     severity: WARNING
-    message: "TEST FIXTURE (CWE-601): untrusted redirect target; allow only approved internal destinations."
+    message: "외부 리다이렉트 패턴(CWE-601): 외부 입력을 이동 주소로 그대로 사용합니다. 허용된 내부 경로만 선택하도록 제한하세요. 실제 페이지 이동이 없는 검사용 모형 코드입니다."
     metadata:
       category: security
       cwe: ["CWE-601: Open Redirect"]
       gitaegis_fixture: true
+      gitaegis_impact: "실제 서비스의 페이지 이동에 이 패턴을 사용하면 사용자를 공격자가 지정한 외부 사이트로 보낼 수 있습니다. 정상 서비스의 링크를 이용해 피싱 페이지로 유도하고 로그인 정보 입력을 속일 위험이 있습니다."
     mode: taint
     pattern-sources:
       - pattern: fixture_input(...)

@@ -36,8 +36,6 @@ const menu: { id: View; label: string; icon: IconName }[] = [
   { id: "analysis", label: "분석 설정", icon: "calendar" },
   { id: "vulnerabilities", label: "취약점", icon: "alert" },
   { id: "account", label: "계정 및 사용량", icon: "usage" },
-  // Temporary professor review entry: remove this entry to hide the design screen.
-  { id: "database", label: "DB 설계 · 검토용", icon: "grid" },
 ];
 const severityLabel = { critical: "치명적", high: "높음", medium: "중간", low: "낮음", info: "정보" };
 const statusLabel = { new: "새로 발견", open: "미해결", triaging: "검토 중", resolved: "해결", false_positive: "오탐", accepted_risk: "위험 수용" };
@@ -64,6 +62,9 @@ function DashboardContent({ databaseDesign, initialData, initialError }: { datab
   const [githubLoading, setGitHubLoading] = useState(false);
   const [githubError, setGitHubError] = useState("");
   const [pendingRepository, setPendingRepository] = useState<string | null>(null);
+  const [scanningRepository, setScanningRepository] = useState<string | null>(null);
+  const [scanMessage, setScanMessage] = useState("");
+  const [scanError, setScanError] = useState("");
   const repositories = data?.repositories ?? [];
   const scanPolicies = data?.scanPolicies ?? {};
   const scans = data?.scans ?? [];
@@ -108,6 +109,12 @@ function DashboardContent({ databaseDesign, initialData, initialError }: { datab
   const codeFindings = needsReview.filter(item => !item.dependency);
   const packageFindings = needsReview.filter(item => item.dependency);
   const activeScans = scans.filter(scan => scan.status === "queued" || scan.status === "running");
+  const polling = activeScans.length > 0 || scanningRepository !== null;
+  useEffect(() => {
+    if (!polling) return;
+    const timer = window.setInterval(() => { void loadData().catch(() => {}); }, 2500);
+    return () => window.clearInterval(timer);
+  }, [polling, loadData]);
   const filteredScans = scans.filter(scan => selectableRepositories.some(repo => repo.id === scan.repositoryId) && (repositoryId === "all" || scan.repositoryId === repositoryId)).sort((a, b) => Number(!repositories.find(repo => repo.id === a.repositoryId)?.connected) - Number(!repositories.find(repo => repo.id === b.repositoryId)?.connected));
 
   function navigate(next: View) { setView(next); setSearch(""); if (next === "vulnerabilities") setFindingKind("all"); if (next === "repositories" && data?.github.connected) void loadGitHubRepositories(); }
@@ -131,6 +138,24 @@ function DashboardContent({ databaseDesign, initialData, initialError }: { datab
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "분석 설정을 저장하지 못했습니다.");
     await loadData();
+  }
+  async function startScan(id: string) {
+    setScanningRepository(id);
+    setScanError("");
+    setScanMessage("GitHub 기본 브랜치의 코드를 검사하고 있습니다.");
+    setDataError("");
+    try {
+      const response = await fetch(`/api/repositories/${encodeURIComponent(id)}/scans`, { method: "POST" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "검사를 완료하지 못했습니다.");
+      setScanMessage(`수동 코드 검사 완료 · ${result.findings}건 탐지 · 커밋 ${result.commitSha.slice(0, 7)}`);
+    } catch (error) {
+      setScanMessage("");
+      setScanError(error instanceof Error ? error.message : "검사를 완료하지 못했습니다.");
+    } finally {
+      await loadData().catch(() => {});
+      setScanningRepository(null);
+    }
   }
   async function logout() {
     setLoggingOut(true);
@@ -168,6 +193,8 @@ function DashboardContent({ databaseDesign, initialData, initialError }: { datab
 
     <main className="main-content"><header className="page-header"><div><h1>{view === "overview" ? "보안 대시보드" : view === "repositories" ? "Git 저장소 가져오기" : menu.find(item => item.id === view)?.label}</h1><p>{view === "overview" ? "발견된 보안 문제와 검사 추이를 확인하세요." : view === "repositories" ? "검사할 GitHub 저장소를 선택하세요." : view === "analysis" ? "저장소별 커밋 검사와 정기 분석 일정을 설정하세요." : view === "account" ? "GitHub 연결, AI 사용량과 스캔 기록을 관리하세요." : view === "database" ? "교수님 검토용 · 테이블 관계와 데이터 구조를 확인하세요." : "저장소별로 발견된 취약점을 확인하세요."}</p></div><span className="status-pill">DB 연결됨</span></header>
       {dataError && <p className="data-error" role="alert">{dataError}</p>}
+      {scanMessage && <p className="scan-notice" role="status">{scanMessage}</p>}
+        {scanError && <p className="data-error" role="alert">{scanError}</p>}
       {(!data.github.connected || !data.github.privateAccess) && <section className="panel github-connect"><h2>GitHub 저장소 권한 연결</h2><p>공개·비공개 저장소를 모두 불러오려면 GitHub에서 저장소 접근을 한 번 승인해 주세요.</p><form action={loginWithGitHub}><button className="button primary">GitHub 저장소 권한 승인</button></form><small>GitHub OAuth의 repo 권한에는 쓰기도 포함됩니다. 현재 서비스는 저장소 조회만 수행합니다.</small></section>}
 
       {view === "overview" && <>
@@ -191,13 +218,13 @@ function DashboardContent({ databaseDesign, initialData, initialError }: { datab
 
       {view === "repositories" && <section><div className="repository-toolbar"><div className="account-select"><Icon name="repo" /><span>@{user.githubLogin}</span><span className="connection-text">공개·비공개 저장소</span></div><label className="search-field"><Icon name="search" /><input aria-label="저장소 검색" placeholder="저장소 검색" value={search} onChange={event => setSearch(event.target.value)} /></label></div>{data.github.connected && <div className="repository-actions"><button className="button secondary" disabled={githubLoading} onClick={() => void loadGitHubRepositories()}>{githubLoading ? "불러오는 중…" : "목록 새로고침"}</button></div>}{githubError && <p className="data-error" role="alert">{githubError}</p>}<div className="panel import-list">{filteredRepos.map(repo => {
         const stored = repositories.find(item => item.githubId === repo.githubId);
-        return <div className="import-row" key={repo.githubId}><span className="repo-avatar">{repo.name[0].toUpperCase()}</span><span className="import-name"><strong><a href={repo.url} target="_blank" rel="noopener noreferrer">{repo.name}</a></strong><span><Icon name="lock" size={13} />{repo.visibility === "private" ? "비공개" : "공개"} · {stored?.connected ? "연결됨" : stored && recordedRepositoryIds.has(stored.id) ? "연결 해제 · 기록 보관" : "연결 가능"}</span></span><button className={`button ${stored?.connected ? "secondary" : "primary"}`} disabled={pendingRepository !== null} onClick={() => void toggleRepository(repo.githubId)}>{pendingRepository === repo.githubId ? "저장 중…" : stored?.connected ? "연결 해제" : "연결하기"}</button></div>;
-      })}{!githubLoading && !githubError && filteredRepos.length === 0 && <p className="empty-state">{data.github.connected ? "표시할 저장소가 없습니다." : "먼저 GitHub 저장소 접근을 연결해 주세요."}</p>}{githubLoading && <p className="empty-state" role="status">GitHub 저장소 목록을 불러오고 있습니다.</p>}</div></section>}
+        return <div className="import-row" key={repo.githubId}><span className="repo-avatar">{repo.name[0].toUpperCase()}</span><span className="import-name"><strong><a href={repo.url} target="_blank" rel="noopener noreferrer">{repo.name}</a></strong><span><Icon name="lock" size={13} />{repo.visibility === "private" ? "비공개" : "공개"} · {stored?.connected ? "연결됨" : stored && recordedRepositoryIds.has(stored.id) ? "연결 해제 · 기록 보관" : "연결 가능"}</span></span><div className="repository-row-actions">{stored?.connected && <button className="button primary" disabled={scanningRepository !== null || pendingRepository !== null} onClick={() => void startScan(stored.id)}>{scanningRepository === stored.id ? "검사 중…" : "수동 검사"}</button>}<button className={`button ${stored?.connected ? "secondary" : "primary"}`} disabled={pendingRepository !== null || scanningRepository !== null || activeScans.some(scan => scan.repositoryId === stored?.id)} onClick={() => void toggleRepository(repo.githubId)}>{pendingRepository === repo.githubId ? "저장 중…" : stored?.connected ? "연결 해제" : "연결하기"}</button></div></div>;
+      })}{!githubLoading && !githubError && filteredRepos.length === 0 && <p className="empty-state">{data.github.connected ? "표시할 저장소가 없습니다." : "먼저 GitHub 저장소 접근을 연결해 주세요."}</p>}{githubLoading && <p className="empty-state" role="status">GitHub 저장소 목록을 불러오고 있습니다.</p>}</div><p className="scan-scope-note">수동 검사는 GitHub 기본 브랜치의 JavaScript·TypeScript·Python 코드를 정적 분석합니다. 저장소 코드를 실행하지 않으며, 의존성 검사는 포함하지 않습니다.</p></section>}
 
       {view === "account" && <div className="account-content">
         <section className="panel github-panel"><div className="panel-heading"><h2>GitHub 계정</h2><span className="connected-status"><Icon name="check" size={15} />로그인됨</span></div><div className="github-profile"><span className="avatar large">{initial}</span><div><strong>{displayName}</strong><p>@{user.githubLogin}</p></div><span className="secondary-text">GitHub 인증 완료</span></div></section>
         <section className="panel billing-panel"><div className="panel-heading"><h2>구독 및 AI 사용량</h2><span className="status-pill">{data.billing.subscriptionStatus === "active" ? "구독 활성" : data.billing.subscriptionStatus ? "구독 상태 확인 필요" : "구독 없음"}</span></div><div className="billing-grid"><div><span>구독 가격</span><strong>{data.billing.price === null ? "등록 없음" : `${data.billing.price} ${data.billing.currency}`}</strong></div><div><span>이번 달 AI 사용 기록</span><strong>{data.billing.aiRequests}<small>회</small></strong></div><div><span>AI 예상 비용</span><strong>{data.billing.estimatedAiCost === null ? "산정 기록 없음" : `${data.billing.estimatedAiCost} ${data.billing.currency}`}</strong></div></div><p className="billing-note">구독과 사용량은 DB에 기록된 값만 표시합니다.</p></section>
-        <section className="panel table-panel"><div className="panel-heading"><h2>스캔 기록</h2>{repositoryFilter()}</div><div className="table-scroll"><table><thead><tr><th>실행 시각</th><th>저장소</th><th>커밋</th><th>실행 방식</th><th>SAST</th><th>의존성</th><th>상태</th></tr></thead><tbody>{filteredScans.map(scan => <tr key={scan.id}><td>{scan.startedAt}</td><td>{repoName(scan.repositoryId)}{!repositories.find(repo => repo.id === scan.repositoryId)?.connected && <span className="recorded-repo-label">기록만 보관</span>}</td><td><code>{scan.commitSha}</code></td><td>{scan.trigger === "push" ? "커밋" : scan.trigger === "schedule" ? "정기" : "수동"}</td><td>{scan.status === "completed" ? scan.sastCount : "—"}</td><td>{scan.status === "completed" ? scan.cveCount : "—"}</td><td><span className={`scan-status ${scan.status}`}>{scanStatusLabel[scan.status]}</span></td></tr>)}</tbody></table>{filteredScans.length === 0 && <p className="empty-state">이 저장소의 스캔 기록이 없습니다.</p>}</div></section>
+        <section className="panel table-panel"><div className="panel-heading"><h2>스캔 기록</h2>{repositoryFilter()}</div><div className="table-scroll"><table><thead><tr><th>실행 시각</th><th>저장소</th><th>커밋</th><th>실행 방식</th><th>SAST</th><th>의존성</th><th>상태</th></tr></thead><tbody>{filteredScans.map(scan => <tr key={scan.id}><td>{scan.startedAt}</td><td>{repoName(scan.repositoryId)}{!repositories.find(repo => repo.id === scan.repositoryId)?.connected && <span className="recorded-repo-label">기록만 보관</span>}</td><td><code>{scan.commitSha}</code></td><td>{scan.trigger === "push" ? "커밋" : scan.trigger === "schedule" ? "정기" : "수동"}</td><td>{scan.status === "completed" ? scan.sastCount : "—"}</td><td>{scan.scope === "sast" ? "미실행" : scan.status === "completed" ? scan.cveCount : "—"}</td><td><span className={`scan-status ${scan.status}`}>{scanStatusLabel[scan.status]}</span>{scan.errorMessage && <small className="scan-error-detail">{scan.errorMessage}</small>}</td></tr>)}</tbody></table>{filteredScans.length === 0 && <p className="empty-state">이 저장소의 스캔 기록이 없습니다.</p>}</div></section>
         <div className="logout-section"><button className="button secondary" onClick={logout} disabled={loggingOut}><Icon name="logout" size={17} />{loggingOut ? "로그아웃 중…" : "로그아웃"}</button>{logoutError && <p className="logout-error" role="alert">로그아웃하지 못했습니다. 다시 시도해 주세요.</p>}</div>
       </div>}
     </main>

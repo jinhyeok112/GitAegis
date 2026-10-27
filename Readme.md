@@ -4,7 +4,7 @@
 
 GitAegis는 저장소별 보안 위험을 모아 어느 저장소의 어느 코드가 왜 위험한지 확인하도록 돕는 심화응용프로젝트다.
 
-현재 **GitHub OAuth 로그인, 공개·비공개 저장소 목록 조회, MySQL 저장소 연결·해제, 분석 설정 저장**을 구현했다. 화면에 가상 저장소나 검사 결과를 넣지 않는다. 취약점·검사 활동·구독·AI 사용량은 DB에 기록된 값만 표시하며, 기록이 없으면 빈 상태로 안내한다.
+현재 **GitHub OAuth 로그인, 공개·비공개 저장소 목록 조회, MySQL 저장소 연결·해제, 수동 Semgrep 검사, 분석 설정 저장**을 구현했다. 화면에 가상 저장소나 검사 결과를 넣지 않는다. 취약점·검사 활동·구독·AI 사용량은 DB에 기록된 값만 표시하며, 기록이 없으면 빈 상태로 안내한다.
 
 ## 프로젝트 개요
 
@@ -26,16 +26,17 @@ GitAegis는 저장소별 보안 위험을 모아 어느 저장소의 어느 코�
 - 저장소 메뉴에서 GitHub API의 전체 페이지를 읽고, 저장소명 검색과 공개·비공개 표시를 제공한다.
 - 연결하기·연결 해제는 DB에 반영한다. 새로고침이나 서버 재시작 후에도 연결 상태가 유지된다.
 - 연결 해제는 저장소와 기존 검사 기록을 삭제하지 않는다.
+- 연결된 저장소의 `수동 검사`를 누르면 GitHub 기본 브랜치의 커밋을 내려받아 JavaScript·TypeScript·Python을 정적 분석하고 결과와 이력을 MySQL에 저장한다. 저장소 코드를 실행하지 않는다.
 - 커밋 검사·정기 분석 설정을 DB에 저장한다. 실제 자동 실행기는 아직 연결하지 않았다.
 - 대시보드는 사용자 소유의 DB 기록만 읽는다. 다른 사용자의 저장소와 검사 결과는 조회·변경할 수 없다.
 - 구독이나 AI 사용 이력이 없으면 구독 없음·사용 기록 0회로 표시한다. 임의 요금이나 사용량을 넣지 않는다.
-- `DB 설계 · 검토용` 메뉴에서는 현재 SQL 스키마와 테이블 관계를 확인한다.
+- `DB 설계 · 검토용` 메뉴는 숨겼다. 검토용 화면 소스와 SQL 스키마는 보존한다.
 
 GitHub OAuth의 `repo` 권한은 쓰기도 포함한다. 현재 애플리케이션의 GitHub 요청은 저장소 조회용 GET만 수행한다. 조직 저장소는 조직의 OAuth 앱 정책·SSO 승인이 추가로 필요할 수 있다.
 
 ## 아직 연결하지 않은 기능
 
-- 저장소 복제와 실제 Semgrep 검사 실행
+- 의존성 취약점 검사와 범용 SAST 규칙 확장
 - NVD·CWE·OSV 등 취약점 정보 연동
 - 커밋 웹훅 및 정기 검사 실행기
 - Gemini를 통한 AI 설명과 수정 제안
@@ -51,7 +52,7 @@ GitHub OAuth의 `repo` 권한은 쓰기도 포함한다. 현재 애플리케이�
 | 웹·서버 API | Next.js App Router, TypeScript, React, Tailwind CSS |
 | 인증 | Auth.js, GitHub OAuth, JWT 쿠키 |
 | DB | MySQL 8, mysql2 드라이버 |
-| 분석 서버 | Python·FastAPI·Semgrep 연동 예정 |
+| 분석 실행 | Python 안전 압축 해제·Semgrep 서버 프로세스 |
 | 취약점 정보 | NVD·MITRE CWE·OSV 연동 예정 |
 | AI | Gemini 연동 예정 |
 | 운영 | OCI Ampere A1 이전 예정 |
@@ -92,9 +93,11 @@ npm run db:init
 npm run dev -- --hostname 127.0.0.1
 ```
 
-`db:init`은 지정한 DB와 없는 테이블만 생성하며 기존 데이터를 삭제하지 않는다. 기존 구조 변경을 자동으로 수행하는 마이그레이션 도구는 아니다.
+`db:init`은 지정한 DB와 없는 테이블을 생성하며 기존 데이터를 삭제하지 않는다. 수동 검사의 범위를 구분하는 `scans.scan_scope` 열이 없으면 추가한다. 일반적인 구조 변경을 자동으로 수행하는 마이그레이션 도구는 아니다.
 
 브라우저에서 `http://localhost:3000`에 접속한다. 로그인 후 저장소 메뉴를 열면 공개·비공개 목록을 불러온다. 저장소를 선택해 연결하면 연결 상태가 MySQL에 저장된다.
+
+수동 검사에는 Python·Semgrep이 추가로 필요하다. 현재 PC에는 `.tools/semgrep` 가상환경을 준비했다. 다른 PC·OCI의 설치와 경로 설정은 [수동 검사 안내](docs/manual-scans.md)를 참고한다. 검사는 GitHub에 반영된 코드만 읽는다.
 
 이전 버전에서 로그인한 세션은 토큰이나 새 저장소 권한이 없을 수 있다. 화면의 GitHub 저장소 권한 승인 버튼으로 한 번 다시 승인한다. 환경변수를 바꾸면 개발 서버를 재시작한다.
 
@@ -108,6 +111,11 @@ app/api/dashboard/route.ts                사용자별 DB 데이터 조회
 app/api/github/repositories/route.ts      실제 GitHub 목록 조회
 app/api/repositories/route.ts             저장소 연결·해제
 app/api/repositories/[id]/policy/route.ts  분석 설정 저장
+app/api/repositories/[id]/scans/route.ts   수동 검사 요청
+lib/server/manual-scan.ts                 실행 잠금·상태·결과 트랜잭션
+lib/server/scan-engine.ts                 안전한 도구 실행·결과 변환
+scripts/extract_scan_source.py            제한된 소스 파일만 압축 해제
+security_rules/manual.yaml               서버가 관리하는 일반 검사 규칙
 lib/server/db.ts                         MySQL 연결 풀
 lib/server/github-account.ts             사용자 및 암호화 토큰 저장
 lib/server/token-encryption.ts            AES-256-GCM 토큰 암호화
@@ -123,6 +131,8 @@ scripts/db-init.mjs                       기존 데이터를 보존하는 초�
 
 - [GitHub 로그인과 쿠키 세션](docs/authentication.md)
 - [DB 및 저장소 연결 구조](docs/database-and-repositories.md)
+- [수동 검사 흐름과 중요 코드](docs/manual-scans.md)
+- [Vercel 배포와 GitHub 로그인 설정](docs/vercel-deployment.md)
 
 ## 검증
 
@@ -132,9 +142,10 @@ npm run build
 npm run test:auth
 npm run test:data
 npm run test:fixtures
+npm run test:scan-safety
 ```
 
-인증 검사는 로그인·쿠키 복원·만료·변조·CSRF·PKCE·state·repo 권한을 확인한다. 데이터 검사는 별도로 생성한 임시 MySQL DB에서 저장·사용자별 분리·정책 변경·연결 해제·서버 재시작 후 보존을 확인한다. GitHub API 응답은 테스트 프로세스 안에서만 대체하며, 애플리케이션에는 대체 데이터나 우회 경로를 두지 않는다. 테스트 종료 시 해당 테스트가 만든 DB만 삭제한다.
+인증 검사는 로그인·쿠키 복원·만료·변조·CSRF·PKCE·state·repo 권한을 확인한다. 데이터 검사는 별도 임시 MySQL DB에서 저장·사용자별 분리·정책 변경·연결 해제·재시작 후 보존 및 실제 Semgrep 실행·결과 중복 방지·동시 실행 거절·실패 이력을 확인한다. GitHub API 응답은 테스트 프로세스 안에서만 대체하며, 애플리케이션에는 대체 데이터나 우회 경로를 두지 않는다. 테스트 종료 시 해당 테스트가 만든 DB만 삭제한다. `test:scan-safety`는 압축 경로 이탈·링크·중복·용량 제한을 검증한다.
 
 ### 정적 분석용 안전 샘플
 

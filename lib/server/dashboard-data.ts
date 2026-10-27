@@ -53,11 +53,12 @@ export async function loadDashboard(userId: string | null): Promise<DashboardDat
     vulnerabilities: findingRows.map(row => ({
       id: String(row.id), repositoryId: String(row.repository_id), severity: row.severity, title: row.title,
       description: row.description ?? "설명 정보가 없습니다.", impact: row.impact ?? "영향 정보가 없습니다.",
+      isTestFixture: row.source === "sast" && String(row.external_id ?? "").startsWith("gitaegis-fixture-"),
       filePath: row.file_path ?? null, startLine: row.start_line ?? null, endLine: row.end_line ?? null,
       code: row.code_snippet ?? null, status: row.status,
       ...(row.dependency_name ? { dependency: { packageName: row.dependency_name, ecosystem: row.dependency_ecosystem ?? "", installedVersion: row.installed_version ?? "미확인", affectedRange: row.affected_version_range ?? "미확인", fixedVersion: row.fixed_version ?? null, advisoryId: row.external_id ?? "", advisoryUrl: /^https?:\/\//.test(row.advisory_url ?? "") ? row.advisory_url : "" } } : {}),
     })),
-    scans: scanRows.map(row => ({ id: String(row.id), repositoryId: String(row.repository_id), trigger: row.trigger_type, status: row.status, sastCount: Number(row.sast_count), cveCount: Number(row.dependency_count), commitSha: row.commit_sha ? String(row.commit_sha).slice(0, 7) : "—", startedAt: dateLabel(row.started_at ?? row.created_at) ?? "시각 없음" })),
+    scans: scanRows.map(row => ({ id: String(row.id), repositoryId: String(row.repository_id), trigger: row.trigger_type, status: row.status, scope: row.scan_scope ?? "unknown", errorMessage: row.error_message ?? null, sastCount: Number(row.sast_count), cveCount: Number(row.dependency_count), commitSha: row.commit_sha ? String(row.commit_sha).slice(0, 7) : "—", startedAt: dateLabel(row.started_at ?? row.created_at) ?? "시각 없음" })),
     scanPolicies, activity: activityDays(activityRows),
     github: { connected: accountRows.length > 0, privateAccess: String(accountRows[0]?.scope ?? "").split(/[ ,]+/).includes("repo") },
     billing: { subscriptionStatus: subscription?.status ?? null, plan: subscription?.plan_code ?? null, price: subscription?.base_price == null ? null : String(subscription.base_price), currency: subscription?.currency ?? "KRW", aiRequests: Number(usageRows[0]?.requests ?? 0), estimatedAiCost: usageRows[0]?.estimated_cost == null ? null : String(usageRows[0].estimated_cost) },

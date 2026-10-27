@@ -116,6 +116,7 @@ test("valid encrypted cookie restores identity on repeated page requests", async
     assert.match(html, /인증 테스트 사용자/);
     assert.match(html, /session-test-user/);
     assert.match(html, /보안 대시보드/);
+    assert.doesNotMatch(html, /DB 설계 · 검토용/);
     assert.match(response.headers.get("cache-control"), /private.*no-store/);
   }
   const response = await request("/login", { headers: { cookie } });

@@ -2,6 +2,7 @@ import "server-only";
 import type { GitHubRepository } from "@/lib/types";
 import { getGitHubAccount } from "@/lib/server/github-account";
 import { ServiceError } from "@/lib/server/errors";
+import { writeFile } from "node:fs/promises";
 
 type GitHubRepoResponse = {
   id: number;
@@ -50,4 +51,36 @@ export async function getAccessibleRepository(userId: string, githubId: string) 
   const repo: GitHubRepoResponse = await githubRequest(`/repositories/${githubId}`, accessToken);
   if (!repo.permissions?.pull) throw new ServiceError("REPOSITORY_ACCESS_DENIED", "읽기 권한이 있는 저장소만 연결할 수 있습니다.", 403);
   return repositoryDto(repo);
+}
+
+export async function downloadRepositorySource(userId: string, githubId: string, archivePath: string) {
+  const repo = await getAccessibleRepository(userId, githubId);
+  const { accessToken } = await getGitHubAccount(userId);
+  const name = repo.name.split("/").map(encodeURIComponent).join("/");
+  const commit = await githubRequest(`/repos/${name}/commits/${encodeURIComponent(repo.defaultBranch)}`, accessToken);
+  if (typeof commit.sha !== "string" || !/^[a-f0-9]{40}$/i.test(commit.sha)) throw new ServiceError("INVALID_COMMIT", "기본 브랜치의 커밋을 확인하지 못했습니다.", 502);
+  const controller = AbortSignal.timeout(30000);
+  const headers = { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json", "User-Agent": "GitAegis" };
+  let response = await fetch(`https://api.github.com/repos/${name}/tarball/${commit.sha}`, { headers, redirect: "manual", cache: "no-store", signal: controller });
+  if ([301, 302, 307, 308].includes(response.status)) {
+    const location = new URL(response.headers.get("location") || "");
+    if (location.protocol !== "https:" || location.hostname !== "codeload.github.com") throw new ServiceError("INVALID_ARCHIVE_URL", "저장소 다운로드 주소를 확인하지 못했습니다.", 502);
+    // A GitHub-provided signed archive URL needs no Authorization header.
+    response = await fetch(location, { redirect: "error", cache: "no-store", signal: controller });
+  }
+  if (!response.ok || !response.body) throw new ServiceError("ARCHIVE_UNAVAILABLE", "저장소 소스를 다운로드하지 못했습니다. GitHub 권한을 확인해 주세요.", 502);
+  const chunks: Uint8Array[] = [];
+  const reader = response.body.getReader();
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.length;
+      if (size > 25 * 1024 * 1024) throw new ServiceError("ARCHIVE_TOO_LARGE", "압축된 저장소가 수동 검사 한도인 25MB를 초과합니다.", 422);
+      chunks.push(value);
+    }
+  } finally { await reader.cancel().catch(() => {}); }
+  await writeFile(archivePath, Buffer.concat(chunks));
+  return commit.sha;
 }

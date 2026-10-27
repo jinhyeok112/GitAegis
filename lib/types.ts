@@ -18,6 +18,7 @@ export interface Vulnerability {
   title: string;
   description: string;
   impact: string;
+  isTestFixture?: boolean;
   filePath: string | null;
   startLine: number | null;
   endLine: number | null;
@@ -51,6 +52,8 @@ export interface Scan {
   cveCount: number;
   commitSha: string;
   startedAt: string;
+  scope: "unknown" | "sast" | "sast_dependency";
+  errorMessage: string | null;
 }
 
 export interface ScanPolicy {

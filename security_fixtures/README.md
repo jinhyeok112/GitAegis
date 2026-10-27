@@ -1,6 +1,6 @@
 # 안전한 보안 검사 샘플
 
-GitAegis의 정적 분석과 오탐 검증에 사용할 소스 샘플이다. 실제 앱·인증·DB·API에는 연결하지 않는다. 가상 검사 결과를 DB에 입력하거나 대시보드에 표시하지 않는다.
+GitAegis의 정적 분석과 오탐 검증에 사용할 소스 샘플이다. 실제 앱·인증·DB·API의 실행 코드에는 연결하지 않는다. 수동 검사에서 실제로 탐지한 경우 DB에 저장되며, `검사용 샘플`·`정보`로 구분한다. 미리 만든 결과를 입력하지 않는다.
 
 ## 포함한 패턴
 
@@ -55,8 +55,8 @@ Windows에서 이 작업의 검증용으로 준비한 로컬 가상환경을 사
 & .\.tools\semgrep\Scripts\semgrep.exe --test --metrics off --disable-version-check --config security_fixtures/cases.yaml security_fixtures/cases.py
 ```
 
-가상환경은 `.gitignore`로 제외하며 애플리케이션이 사용하지 않는다. GitHub에서 저장소를 복제해 검사하려면 먼저 샘플 파일과 규칙을 원격 저장소에 반영해야 한다. 이 샘플을 추가하는 것만으로 GitAegis의 아직 미연동인 검사 실행기가 동작하지는 않는다.
+가상환경은 `.gitignore`로 제외한다. 수동 검사 실행기가 이 가상환경의 Python·Semgrep을 사용한다. 수동 검사는 GitHub의 기본 브랜치를 읽으므로 샘플 파일을 원격 저장소에 반영한 뒤 실행해야 샘플을 탐지한다. 서버는 신뢰하는 로컬 `cases.yaml`을 함께 적용하며 검사 대상 저장소의 설정·규칙을 실행하지 않는다.
 
 ## 제거
 
-사용을 마치면 `security_fixtures/` 폴더와 `package.json`의 `test:fixtures` 명령만 제거하면 된다. 앱의 인증·DB·저장소 연결에는 영향이 없다.
+샘플만 검사 대상에서 제외하려면 원격 저장소의 `cases.py`를 제거한다. 전용 규칙까지 제거하려면 `scan-engine.ts`의 해당 `--config` 인수와 관련 테스트도 함께 수정한다. 앱의 인증·DB·저장소 연결에는 영향이 없다.

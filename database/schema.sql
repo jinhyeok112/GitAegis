@@ -18,6 +18,14 @@ CREATE TABLE github_accounts (
   CONSTRAINT fk_github_accounts_user FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
+CREATE TABLE user_ai_settings (
+  user_id CHAR(36) PRIMARY KEY,
+  provider ENUM('openrouter', 'gemini') NOT NULL,
+  model_id VARCHAR(191) NOT NULL,
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  CONSTRAINT fk_ai_settings_user FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
 CREATE TABLE subscriptions (
   id CHAR(36) PRIMARY KEY,
   user_id CHAR(36) NOT NULL UNIQUE,
@@ -88,7 +96,9 @@ CREATE TABLE vulnerabilities (
   external_id VARCHAR(191) NULL COMMENT '예: Semgrep 규칙 ID 또는 CVE/OSV ID',
   title VARCHAR(500) NOT NULL,
   severity ENUM('critical', 'high', 'medium', 'low', 'info') NOT NULL,
+  severity_score DECIMAL(3,1) NULL COMMENT '출처가 제공한 0~10 점수. 등급을 점수로 환산하지 않음',
   description TEXT NULL,
+  description_source ENUM('rule', 'semgrep') NOT NULL DEFAULT 'semgrep',
   impact TEXT NULL,
   status ENUM('open', 'triaging', 'resolved', 'false_positive', 'accepted_risk') NOT NULL DEFAULT 'open',
   first_seen_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -109,6 +119,9 @@ CREATE TABLE scan_findings (
   start_line INT UNSIGNED NULL,
   end_line INT UNSIGNED NULL,
   code_snippet TEXT NULL,
+  code_context TEXT NULL,
+  context_start_line INT UNSIGNED NULL,
+  context_end_line INT UNSIGNED NULL,
   dependency_name VARCHAR(255) NULL,
   dependency_ecosystem VARCHAR(80) NULL,
   installed_version VARCHAR(100) NULL,
@@ -152,6 +165,39 @@ CREATE TABLE ai_usage_records (
   CONSTRAINT fk_ai_usage_repository FOREIGN KEY (repository_id) REFERENCES repositories(id),
   CONSTRAINT fk_ai_usage_vulnerability FOREIGN KEY (vulnerability_id) REFERENCES vulnerabilities(id),
   KEY idx_ai_usage_user_created (user_id, created_at)
+);
+
+CREATE TABLE finding_remediations (
+  finding_id CHAR(36) PRIMARY KEY,
+  dependency_assessment JSON NULL,
+  ai_suggestion JSON NULL,
+  checked_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  CONSTRAINT fk_remediation_finding FOREIGN KEY (finding_id) REFERENCES scan_findings(id)
+);
+
+-- Public CVE cache and one shared request timestamp survive worker restarts.
+CREATE TABLE remediation_jobs (
+  id CHAR(36) PRIMARY KEY,
+  finding_id CHAR(36) NOT NULL,
+  user_id CHAR(36) NOT NULL,
+  provider ENUM('openrouter', 'gemini') NOT NULL,
+  model_id VARCHAR(191) NOT NULL,
+  status ENUM('queued', 'running', 'completed', 'failed') NOT NULL DEFAULT 'queued',
+  priority INT NOT NULL DEFAULT 0,
+  attempts INT UNSIGNED NOT NULL DEFAULT 0,
+  error_message VARCHAR(1000) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  CONSTRAINT fk_remediation_job_finding FOREIGN KEY (finding_id) REFERENCES scan_findings(id),
+  CONSTRAINT fk_remediation_job_user FOREIGN KEY (user_id) REFERENCES users(id),
+  UNIQUE KEY uq_remediation_job (finding_id, provider, model_id),
+  KEY idx_remediation_job_dispatch (status, priority, created_at)
+);
+
+CREATE TABLE security_api_cache (
+  cache_key VARCHAR(191) PRIMARY KEY,
+  payload JSON NULL,
+  checked_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
 );
 
 CREATE TABLE invoices (

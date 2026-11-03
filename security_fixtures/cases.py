@@ -5,26 +5,29 @@ Importing this module creates only functions and a pure in-memory sink. Each
 case returns a description of an operation instead of executing that operation.
 """
 
-from html import escape
-
-
 class InMemorySinks:
     """These names imitate dangerous APIs without using those APIs."""
-
-    def execute(self, query, parameters=()):
-        return {"kind": "sql", "query": query, "parameters": parameters}
 
     def run(self, command, *, shell=False):
         return {"kind": "command", "command": command, "shell": shell}
 
-    def read(self, path):
-        return {"kind": "path", "path": path}
-
-    def render(self, markup):
-        return {"kind": "html", "markup": markup}
-
     def redirect(self, target):
         return {"kind": "redirect", "target": target}
+
+    def log(self, message):
+        return {"kind": "log", "message": message}
+
+    def deserialize(self, payload, *, format="pickle"):
+        return {"kind": "deserialize", "payload": payload, "format": format}
+
+    def template(self, source, parameters=None):
+        return {"kind": "template", "source": source, "parameters": parameters}
+
+    def digest(self, data, *, algorithm):
+        return {"kind": "digest", "data": data, "algorithm": algorithm}
+
+    def connection(self, *, protocol):
+        return {"kind": "connection", "protocol": protocol}
 
 
 fixture_sink = InMemorySinks()
@@ -35,24 +38,12 @@ def fixture_input(value):
     return value
 
 
-def allow_filename(value):
-    return value if value in {"report.txt", "summary.json"} else "report.txt"
+def clean_log(value):
+    return "fixture-event"
 
 
 def allow_redirect(value):
     return value if value in {"/dashboard", "/account"} else "/dashboard"
-
-
-def sql_unsafe(value):
-    username = fixture_input(value)
-    # ruleid: gitaegis-fixture-sql-injection
-    return fixture_sink.execute(f"SELECT id FROM fixture_users WHERE name = '{username}'")
-
-
-def sql_safe(value):
-    username = fixture_input(value)
-    # ok: gitaegis-fixture-sql-injection
-    return fixture_sink.execute("SELECT id FROM fixture_users WHERE name = ?", (username,))
 
 
 def command_unsafe(value):
@@ -67,30 +58,6 @@ def command_safe(value):
     return fixture_sink.run(["fixture-viewer", "--", filename], shell=False)
 
 
-def path_unsafe(value):
-    filename = fixture_input(value)
-    # ruleid: gitaegis-fixture-path-traversal
-    return fixture_sink.read("/virtual-fixtures/" + filename)
-
-
-def path_safe(value):
-    filename = allow_filename(fixture_input(value))
-    # ok: gitaegis-fixture-path-traversal
-    return fixture_sink.read("/virtual-fixtures/" + filename)
-
-
-def html_unsafe(value):
-    name = fixture_input(value)
-    # ruleid: gitaegis-fixture-html-injection
-    return fixture_sink.render(f"<p>{name}</p>")
-
-
-def html_safe(value):
-    name = escape(fixture_input(value), quote=True)
-    # ok: gitaegis-fixture-html-injection
-    return fixture_sink.render(f"<p>{name}</p>")
-
-
 def redirect_unsafe(value):
     target = fixture_input(value)
     # ruleid: gitaegis-fixture-open-redirect
@@ -101,3 +68,61 @@ def redirect_safe(value):
     target = allow_redirect(fixture_input(value))
     # ok: gitaegis-fixture-open-redirect
     return fixture_sink.redirect(target)
+
+
+def log_unsafe(value):
+    event = fixture_input(value)
+    # ruleid: gitaegis-fixture-log-injection
+    return fixture_sink.log("event=" + event)
+
+
+def log_safe(value):
+    event = clean_log(fixture_input(value))
+    # ok: gitaegis-fixture-log-injection
+    return fixture_sink.log("event=" + event)
+
+
+def deserialize_unsafe(value):
+    payload = fixture_input(value)
+    # ruleid: gitaegis-fixture-unsafe-deserialization
+    return fixture_sink.deserialize(payload, format="pickle")
+
+
+def deserialize_safe(value):
+    payload = fixture_input(value)
+    # ok: gitaegis-fixture-unsafe-deserialization
+    return fixture_sink.deserialize(payload, format="json")
+
+
+def template_unsafe(value):
+    name = fixture_input(value)
+    # ruleid: gitaegis-fixture-template-injection
+    return fixture_sink.template("Hello " + name)
+
+
+def template_safe(value):
+    name = fixture_input(value)
+    # ok: gitaegis-fixture-template-injection
+    return fixture_sink.template("Hello {{name}}", {"name": name})
+
+
+def digest_unsafe(value):
+    data = fixture_input(value)
+    # ruleid: gitaegis-fixture-md5
+    return fixture_sink.digest(data, algorithm="md5")
+
+
+def digest_safe(value):
+    data = fixture_input(value)
+    # ok: gitaegis-fixture-md5
+    return fixture_sink.digest(data, algorithm="sha256")
+
+
+def tls_unsafe():
+    # ruleid: gitaegis-fixture-weak-tls
+    return fixture_sink.connection(protocol="TLSv1")
+
+
+def tls_safe():
+    # ok: gitaegis-fixture-weak-tls
+    return fixture_sink.connection(protocol="TLSv1_2")

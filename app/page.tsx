@@ -9,10 +9,12 @@ import { loadDashboard } from "@/lib/server/dashboard-data";
 import { errorResponse } from "@/lib/server/errors";
 import type { DashboardData } from "@/lib/types";
 
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams: Promise<{ githubReconnect?: string | string[] }> }) {
   // Authorize on the server before reading or rendering protected content.
   const session = await auth();
   if (!session?.user) redirect("/login");
+  const { githubReconnect } = await searchParams;
+  const reconnectState = githubReconnect === "check" || githubReconnect === "failed" ? githubReconnect : null;
 
   let initialData: DashboardData | null = null;
   let initialError = "";
@@ -23,5 +25,5 @@ export default async function Home() {
     initialError = (await errorResponse(error).json()).error;
   }
   const sql = await readFile(join(process.cwd(), "database/schema.sql"), "utf8");
-  return <Dashboard databaseDesign={parseDatabaseDesign(sql)} session={session} initialData={initialData} initialError={initialError} />;
+  return <Dashboard databaseDesign={parseDatabaseDesign(sql)} session={session} initialData={initialData} initialError={initialError} githubReconnect={reconnectState} />;
 }

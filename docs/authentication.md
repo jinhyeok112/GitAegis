@@ -78,7 +78,7 @@ export const { GET, POST } = handlers;
 `auth.ts`의 핵심 설정은 다음과 같다.
 
 ```ts
-export const SESSION_MAX_AGE = 7 * 24 * 60 * 60;
+export const SESSION_MAX_AGE = 90 * 24 * 60 * 60;
 
 session: { strategy: "jwt", maxAge: SESSION_MAX_AGE },
 ```
@@ -90,7 +90,7 @@ session: { strategy: "jwt", maxAge: SESSION_MAX_AGE },
 - `HttpOnly`: 브라우저 JavaScript가 세션 쿠키를 직접 읽지 못한다.
 - `SameSite=Lax`: 외부 사이트에서 보내는 교차 사이트 요청의 쿠키 전송을 제한하면서 OAuth 복귀를 허용한다.
 - `Path=/`: 사이트 전체 요청에서 같은 세션을 사용한다.
-- `Expires`: 세션 발급 또는 갱신 시점으로부터 7일 뒤로 설정한다. 브라우저 재실행 이후에도 보존할 수 있다.
+- `Expires`: 세션 발급 또는 갱신 시점으로부터 90일 뒤로 설정한다. 브라우저 재실행 이후에도 보존할 수 있다.
 - `Secure`: HTTPS 주소에서는 HTTPS 요청에만 쿠키를 보낸다. 로컬 HTTP 개발에서는 비활성화된다.
 
 브라우저는 이후 요청에 쿠키를 자동으로 보낸다. 서버를 재시작해도 `AUTH_SECRET`과 도메인이 같고 쿠키가 만료되지 않았다면 세션을 다시 읽을 수 있다. `AUTH_SECRET`을 매번 새로 생성하면 기존 로그인이 모두 무효화된다.
@@ -125,7 +125,19 @@ GitHub의 액세스 토큰과 Client Secret을 브라우저에 전달하는 세�
 </SessionProvider>
 ```
 
-이후에는 5분 간격 및 창에 다시 포커스할 때 세션을 확인한다. 세션 API를 호출하면 만료 시각을 다시 7일 뒤로 갱신한다. 따라서 로그인 유지는 최초 로그인에서 고정된 7일이 아니라 마지막 세션 갱신부터 7일 기준이다.
+이후에는 5분 간격 및 창에 다시 포커스할 때 세션을 확인한다. 세션 API를 호출하면 만료 시각을 다시 90일 뒤로 갱신한다. 따라서 로그인 유지는 최초 로그인에서 고정된 90일이 아니라 마지막 세션 갱신부터 90일 기준이다.
+
+기존 7일 세션도 아직 유효하면 다음 세션 갱신에서 JWT와 쿠키 모두 90일로 연장된다. 이미 만료된 쿠키는 다시 로그인해야 한다. 세션 수명을 늘리기 위해 `AUTH_SECRET`이나 토큰 암호화 키를 교체하지 않는다.
+
+### GitHub 저장소 인증과 로그인 세션의 차이
+
+앱 로그인 세션 수명과 DB의 GitHub 접근 토큰은 별개다. 현재 OAuth 앱의 토큰을 GitAegis가 7일 또는 90일마다 폐기하는 코드는 없다. GitHub가 토큰을 만료·철회하거나 접근을 거절하면 세션이 유효해도 저장소 API는 401을 반환할 수 있다. 이때 `GITHUB_RECONNECT_REQUIRED`를 반환하며 단순히 토큰이 만료됐다고 단정하지 않는다.
+
+저장소 목록 조회·연결·수동 검사에서 이 응답을 받으면 대시보드가 CSRF·PKCE·state로 보호된 기존 GitHub OAuth 흐름을 **자동으로 한 번 시작**한다. 이미 GitHub에 로그인되어 있고 승인이 유효하면 사용자가 버튼을 누르지 않아도 복귀할 수 있다. GitHub가 로그인·재승인을 요구하면 외부 승인 화면이 표시될 수 있으며, 사용자 동의를 우회하지 않는다.
+
+자동 시도 전 브라우저 sessionStorage에 사용자별 시도 표시를 남겨 OAuth 실패·복귀 후에도 리다이렉트를 반복하지 않는다. 이 표시에는 토큰을 넣지 않으며 인증 판단에도 사용하지 않는다. 시작 요청이 20초 내 완료되지 않거나 OAuth 실패, 콜백 후 저장소 접근 검증 실패, 브라우저 저장소 사용 불가가 발생하면 그때만 **GitHub 권한 다시 연결** 버튼을 표시한다. 콜백 후 GitHub API 성공을 확인해야 시도 표시를 지운다.
+
+앱에서 로그아웃하지 않고 수동 재시도할 수 있다. 성공한 콜백은 같은 GitHub 사용자에 대해 저장된 암호화 토큰을 교체하며 검사 기록·모델 선택·저장소 설정을 삭제하지 않는다. 이미 철회된 토큰은 세션 기간 변경으로 복원할 수 없다. 재연결 전에 실패한 검사 자체를 자동으로 반복 실행하지는 않는다.
 
 `useSession({ required: true, ... })`는 세션이 만료되거나 다른 탭에서 로그아웃하면 대시보드를 숨기고 로그인 화면으로 이동한다. 실제 접근 허용 여부는 계속 서버의 `auth()` 검사가 결정한다. 클라이언트 세션 확인은 이미 열린 화면의 상태를 맞추는 보조 기능이다.
 
@@ -187,12 +199,13 @@ Client ID나 Secret이 비어 있으면 로그인 버튼을 비활성화하고 �
 npm run lint
 npm run build
 npm run test:auth
+npm run test:github-reconnect
 npm run test:data
 ```
 
 통합 검사는 운영 빌드를 임시 포트에서 실행하며 테스트 전용 자격정보와 무작위 암호화 키를 사용한다. 실제 GitHub 계정과 로컬 비밀 설정을 사용하지 않는다.
 
-검증 범위는 첫 접속의 접근 차단, 로그인 화면, 쿠키를 통한 사용자 복원, 반복 요청, 만료·변조 쿠키 거부, 7일 만료 시각과 쿠키 보안 옵션, GitHub 승인 URL의 콜백·PKCE·state·권한, CSRF 없는 로그아웃 거부, 정상 로그아웃, 인증 과정 없이 호출한 콜백 거부, 설정 누락 시 인증 우회 차단이다.
+검증 범위는 첫 접속의 접근 차단, 로그인 화면, 쿠키를 통한 사용자 복원, 반복 요청, 만료·변조 쿠키 거부, 90일 만료 시각과 쿠키 보안 옵션, GitHub 승인 URL의 콜백·PKCE·state·권한, CSRF 없는 로그아웃 거부, 정상 로그아웃, 인증 과정 없이 호출한 콜백 거부, 설정 누락 시 인증 우회 차단이다.
 
 자동 검사는 GitHub에서 실제 승인을 누르고 코드를 교환하는 단계까지 실행하지 않는다. 최종 확인은 브라우저에서 GitHub 로그인, 새로고침, 브라우저 재실행, 로그아웃을 순서대로 수행한다.
 
@@ -206,6 +219,7 @@ OCI에서도 Next.js 서버에 같은 코드를 배포한다. 운영 도메인�
 
 - [Auth.js 설치와 Next.js 연결](https://authjs.dev/getting-started/installation)
 - [GitHub 공급자 설정](https://authjs.dev/getting-started/providers/github)
+- [GitHub 토큰 만료와 철회](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/token-expiration-and-revocation)
 - [JWT 세션과 DB 세션](https://authjs.dev/concepts/session-strategies)
 - [Next.js 인증 가이드](https://nextjs.org/docs/app/guides/authentication)
 

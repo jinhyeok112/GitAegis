@@ -6,14 +6,14 @@ import { createServer } from "node:net";
 import { createRequire } from "node:module";
 import { setTimeout as delay } from "node:timers/promises";
 import { after, before, test } from "node:test";
-import { encode } from "next-auth/jwt";
+import { decode, encode } from "next-auth/jwt";
 
 // Run against a production build with isolated test credentials. No GitHub
 // account, real access token, or authentication-bypass route is used.
 const require = createRequire(import.meta.url);
 const secret = randomBytes(32).toString("base64url");
 const cookieName = "authjs.session-token";
-const sessionMaxAge = 7 * 24 * 60 * 60;
+const sessionMaxAge = 90 * 24 * 60 * 60;
 const identity = { sub: "test-github-user", name: "인증 테스트 사용자", githubLogin: "session-test-user" };
 let app;
 
@@ -94,7 +94,7 @@ test("login page renders GitHub sign-in and explains persistent login", async ()
   const html = await response.text();
   assert.match(html, /GitHub 계정으로 시작하기/);
   assert.match(html, /GitHub로 계속하기/);
-  assert.match(html, /7일간/);
+  assert.match(html.replace(/<!--[\s\S]*?-->/g, ""), /90일간/);
   assert.doesNotMatch(html, /test-client-secret/);
   assert.match(response.headers.get("cache-control"), /private.*no-store/);
 });
@@ -132,8 +132,8 @@ test("forged and expired cookies cannot open the dashboard", async () => {
   }
 });
 
-test("session refresh issues an HttpOnly SameSite cookie with seven-day expiry", async () => {
-  const response = await request("/api/auth/session", { headers: { cookie: await sessionCookie() } });
+test("session refresh upgrades a still-valid seven-day session to a ninety-day JWT and cookie", async () => {
+  const response = await request("/api/auth/session", { headers: { cookie: await sessionCookie(7 * 24 * 60 * 60) } });
   const session = await response.json();
   assert.equal(session.user.githubLogin, identity.githubLogin);
   assert.equal(session.user.id, identity.sub);
@@ -147,7 +147,27 @@ test("session refresh issues an HttpOnly SameSite cookie with seven-day expiry",
   assert.match(cookie, /SameSite=Lax/i);
   assert.match(cookie, /Path=\//i);
   assert.match(cookie, /Expires=/i);
+  const cookieExpires = cookie.match(/Expires=([^;]+)/i)?.[1];
+  assert.ok(cookieExpires);
+  assert.ok(Math.abs(Date.parse(cookieExpires) - Date.parse(session.expires)) < 1000);
+  const renewedJwt = cookie.split(";")[0].slice(cookieName.length + 1);
+  const payload = await decode({ token: renewedJwt, secret, salt: cookieName });
+  assert.ok(payload);
+  const jwtRemaining = payload.exp - Math.floor(Date.now() / 1000);
+  assert.ok(jwtRemaining > sessionMaxAge - 20 && jwtRemaining <= sessionMaxAge);
   assert.match(response.headers.get("cache-control"), /no-store/);
+});
+
+test("an OAuth error with a valid app session returns to the manual recovery state instead of looping", async () => {
+  const cookie = await sessionCookie();
+  const failed = await request("/login?error=AccessDenied", { headers: { cookie } });
+  assert.equal(failed.status, 307);
+  const target = new URL(failed.headers.get("location"), app.origin);
+  assert.equal(target.pathname, "/");
+  assert.equal(target.searchParams.get("githubReconnect"), "failed");
+  const page = await request("/?githubReconnect=failed", { headers: { cookie } });
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /자동 재연결을 완료하지 못했습니다/);
 });
 
 test("GitHub authorization uses the configured callback, state, PKCE, and public/private repository scope", async () => {
@@ -157,7 +177,7 @@ test("GitHub authorization uses the configured callback, state, PKCE, and public
   const response = await request("/api/auth/signin/github", {
     method: "POST",
     headers: { cookie, "content-type": "application/x-www-form-urlencoded", "x-auth-return-redirect": "1" },
-    body: new URLSearchParams({ csrfToken, callbackUrl: app.origin }),
+    body: new URLSearchParams({ csrfToken, callbackUrl: `${app.origin}/?githubReconnect=check` }),
   });
   const url = new URL((await response.json()).url);
   assert.equal(url.origin, "https://github.com");
@@ -168,6 +188,11 @@ test("GitHub authorization uses the configured callback, state, PKCE, and public
   assert.ok(url.searchParams.get("code_challenge"));
   assert.equal(url.searchParams.get("code_challenge_method"), "S256");
   assert.equal(url.searchParams.get("scope"), "read:user user:email repo");
+  const callbackCookie = response.headers.getSetCookie().find(value => value.startsWith("authjs.callback-url="));
+  assert.ok(callbackCookie);
+  const callbackUrl = new URL(decodeURIComponent(callbackCookie.split(";")[0].slice("authjs.callback-url=".length)));
+  assert.equal(callbackUrl.origin, app.origin);
+  assert.equal(callbackUrl.searchParams.get("githubReconnect"), "check");
   for (const name of ["authjs.state", "authjs.pkce.code_verifier"]) {
     assert.ok(response.headers.getSetCookie().some(value => value.startsWith(`${name}=`) && /HttpOnly/i.test(value)));
   }

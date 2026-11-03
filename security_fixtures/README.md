@@ -1,62 +1,46 @@
-# 안전한 보안 검사 샘플
+# 보안 검사와 수정안 생성 검증 샘플
 
-GitAegis의 정적 분석과 오탐 검증에 사용할 소스 샘플이다. 실제 앱·인증·DB·API의 실행 코드에는 연결하지 않는다. 수동 검사에서 실제로 탐지한 경우 DB에 저장되며, `검사용 샘플`·`정보`로 구분한다. 미리 만든 결과를 입력하지 않는다.
+실제 앱·인증·DB·API에 연결하지 않는 메모리 전용 샘플이다. Semgrep이 실제로 탐지한 결과만 저장한다. 점수는 생성 흐름을 검증하기 위한 **샘플 점수**이며, 실제 서비스의 CVSS 평가 결과가 아니다.
 
-## 포함한 패턴
+기존 경로 조작(CWE-22)과 HTML 삽입(CWE-79) 예제를 제거하고 아래 새 예제 3개를 추가했다. 후속 요청으로 기존 SQL 삽입 샘플도 제거하고 MD5·오래된 TLS 샘플을 추가했다. 현재 탐지 대상은 7개이며 각각 안전한 비교 코드가 있다. MD5·TLS 2개의 설명은 아래 Semgrep 원문을 그대로 사용하며 별도 한국어 설명을 추가하지 않는다.
 
-| 종류 | CWE | 탐지 대상 | 안전한 비교 코드 |
-| --- | --- | --- | --- |
-| SQL 삽입 | CWE-89 | 입력을 SQL 문자열에 직접 결합 | 쿼리와 매개변수 분리 |
-| 명령 삽입 | CWE-78 | 입력이 포함된 문자열을 shell=True에 전달 | 인수 배열과 shell=False |
-| 경로 조작 | CWE-22 | 입력을 경로에 직접 결합 | 허용된 파일명만 선택 |
-| HTML 삽입 / XSS | CWE-79 | 입력을 HTML 문자열에 직접 삽입 | HTML 텍스트 이스케이프 |
-| 외부 리다이렉트 | CWE-601 | 임의 입력을 이동 주소로 사용 | 허용된 내부 경로만 선택 |
+| 패턴 | 샘플 점수 | 생성 시점 |
+| --- | --- | --- |
+| 명령 삽입(CWE-78) | 9.1 | 검사 후 사전 생성 |
+| 외부 리다이렉트(CWE-601) | 6.1 | 처음 세부정보 열람 시 |
+| 로그 삽입(CWE-117), 신규 | 5.3 | 처음 세부정보 열람 시 |
+| 안전하지 않은 역직렬화(CWE-502), 신규 | 8.1 | 검사 후 사전 생성 |
+| 서버 템플릿 삽입(CWE-1336), 신규 | 9.1 | 검사 후 사전 생성 |
+| MD5 해시 사용(CWE-327), 추가 | 점수 미제공 · 정보 등급 | 처음 세부정보 열람 시 |
+| 오래된 TLS 버전(CWE-326), 추가 | 점수 미제공 · 정보 등급 | 처음 세부정보 열람 시 |
 
-`cases.py`에 탐지 대상 5개와 안전한 비교 코드 5개를 넣었다. 취약 패턴은 바로 위 주석의 `ruleid`, 안전한 코드는 `ok`로 표시한다. `cases.yaml`의 전용 Semgrep 규칙이 이 표시와 실제 분석 결과를 비교한다.
+`cases.py`의 취약 패턴은 바로 위 `ruleid` 주석, 안전한 비교 코드는 `ok` 주석으로 표시했다. `cases.yaml`은 서버가 유지하는 신뢰된 규칙이다. 제목은 `gitaegis_title`로 어떤 위험인지 짧게 표시하고 CWE를 함께 적는다. metadata의 `gitaegis_impact`와 `gitaegis_description`에는 피해 가능성과 해결 방법을 쉬운 문장으로 작성한다. `gitaegis_score`는 Semgrep 메타데이터 호환성을 위해 문자열로 저장한다.
 
-## 실행해도 시스템에 영향을 주지 않는 구조
+## 실행 구조
 
-`fixture_sink`는 `InMemorySinks` 객체다. `execute`, `run`, `read`, `render`, `redirect`는 모두 **Python 딕셔너리만 반환하는 모형**이다.
+`fixture_sink`의 모든 메서드는 Python 딕셔너리만 반환한다. 실제 SQL·셸 실행, 파일 작업, 네트워크·HTTP 이동, 로그 기록, 역직렬화, 템플릿 실행을 하지 않는다. 실제 비밀값이나 취약한 의존성도 포함하지 않는다. Next.js의 실행 코드에서 import하지 않는다.
 
-- 실제 SQL 실행이나 DB 접속 없음.
-- 실제 셸·외부 프로그램 실행 없음.
-- 샘플에서 파일 읽기·쓰기 없음.
-- 네트워크 요청이나 실제 HTTP 리다이렉트 없음.
-- 브라우저에 HTML을 출력하는 경로 없음.
-- 실제 비밀키·토큰·사용자 정보·취약한 의존성 설치 없음.
-- Next.js의 `app`·`public` 밖에 있으며 앱에서 import하지 않음.
-
-이 파일의 위험한 모양을 분석하는 것이 목적이다. 실제 시스템을 공격하거나 실제 취약점을 만들지 않는다. 전용 규칙은 `fixture_input()`과 모형 sink를 대상으로 하므로 범용 운영 보안 규칙을 대신하지 않는다.
-
-## 안전성 검사
+## 확인
 
 ```bash
 npm run test:fixtures
 ```
 
-Python 표준 라이브러리만 사용한다. 검사기는 소스를 AST로 읽어 실제 시스템 API나 DB 클라이언트를 import하지 않는지 확인하고, 다섯 쌍을 호출해 결과가 메모리 안의 설명 데이터인지 확인한다. HTML·SQL·명령·경로 문자열은 실행하지 않는다.
+Python 표준 라이브러리로 외부 동작 API가 없는지 확인하고, 7쌍의 예제가 메모리 안에서만 동작하는지 검사한다.
 
-## Semgrep 탐지 확인
-
-Semgrep이 설치된 환경에서 프로젝트 루트 기준으로 실행한다.
-
-```bash
-semgrep --test --metrics off --disable-version-check --config security_fixtures/cases.yaml security_fixtures/cases.py
-semgrep scan --metrics off --disable-version-check --config security_fixtures/cases.yaml security_fixtures/cases.py
-```
-
-기대 결과는 취약 패턴 **5건**, 안전한 비교 코드 **0건**이다. 테스트용 로컬 규칙을 사용하므로 다른 규칙 묶음의 탐지 건수가 같다고 가정하지 않는다. 실제 검사기는 이 규칙 파일을 함께 지정해야 모형 sink를 인식한다.
-
-추가 시 검증 결과: Python 안전성 검사 6개 통과, Semgrep 규칙 검사 5개 통과, 실제 스캔의 의도된 탐지 5건 및 예기치 않은 탐지 0건. 앱 DB에 검사 결과를 입력하지 않았다.
-
-Windows에서 이 작업의 검증용으로 준비한 로컬 가상환경을 사용할 때:
+Windows의 로컬 가상환경에서 규칙을 확인하려면:
 
 ```powershell
+$env:PYTHONUTF8 = '1'
 & .\.tools\semgrep\Scripts\semgrep.exe --test --metrics off --disable-version-check --config security_fixtures/cases.yaml security_fixtures/cases.py
 ```
 
-가상환경은 `.gitignore`로 제외한다. 수동 검사 실행기가 이 가상환경의 Python·Semgrep을 사용한다. 수동 검사는 GitHub의 기본 브랜치를 읽으므로 샘플 파일을 원격 저장소에 반영한 뒤 실행해야 샘플을 탐지한다. 서버는 신뢰하는 로컬 `cases.yaml`을 함께 적용하며 검사 대상 저장소의 설정·규칙을 실행하지 않는다.
+기대 결과는 규칙 검사 7개 통과, 취약 패턴 7건, 안전한 비교 코드 0건이다. 통합 테스트는 모의 GitHub 압축 파일과 실제 Semgrep으로 탐지·문맥 저장·사전 생성·열람 시 생성·중복 방지·재시작 복구를 확인한다. AI와 외부 보안 API는 모의 응답을 사용한다.
 
-## 제거
+수동 검사는 GitHub의 기본 브랜치를 읽으므로 변경된 샘플을 원격 저장소에 반영한 뒤 다시 검사해야 새 구성을 탐지한다. 기존 검사 이력은 그대로 보존된다. 이 작업은 원격 저장소에 자동으로 푸시하지 않는다.
 
-샘플만 검사 대상에서 제외하려면 원격 저장소의 `cases.py`를 제거한다. 전용 규칙까지 제거하려면 `scan-engine.ts`의 해당 `--config` 인수와 관련 테스트도 함께 수정한다. 앱의 인증·DB·저장소 연결에는 영향이 없다.
+
+MD5·TLS 규칙은 실제 암호화·통신 대신 메모리 sink 패턴에 적용한다. 메시지는 아래 Semgrep 규칙에서 그대로 보존했다. `gitaegis_description`과 `gitaegis_impact`는 넣지 않으며 DB에 `description_source=semgrep`으로 저장한다. 짧은 제목은 표시용 메타데이터로만 지정한다.
+
+- [MD5 원문 규칙](https://github.com/semgrep/semgrep-rules/blob/develop/python/lang/security/insecure-hash-algorithms-md5.yaml)
+- [TLS 원문 규칙](https://github.com/semgrep/semgrep-rules/blob/develop/python/lang/security/audit/weak-ssl-version.yaml)

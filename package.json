@@ -8,9 +8,13 @@
     "start": "next start",
     "lint": "eslint .",
     "test:auth": "node --test tests/auth.integration.test.mjs",
+    "test:github-reconnect": "node --test tests/github-reconnect.test.mjs",
     "db:init": "node scripts/db-init.mjs",
     "db:sync-rule-copy": "node scripts/sync-rule-copy.mjs",
+    "db:sync-rule-titles": "node scripts/sync-rule-copy.mjs --titles-only",
     "test:data": "node --test tests/data.integration.test.mjs",
+    "test:remediation": "node --test tests/remediation.test.mjs",
+    "test:code-review": "node --test tests/code-review.test.mjs",
     "test:fixtures": "python -B -m unittest security_fixtures.test_safety -v",
     "test:scan-safety": "python -B -m unittest scripts.test_scan_extraction -v"
   },

@@ -24,6 +24,17 @@ try {
   await connection.query(schema.replaceAll("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
   const [scopeColumns] = await connection.query("SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema = ? AND table_name = 'scans' AND column_name = 'scan_scope'", [database]);
   if (!scopeColumns.length) await connection.query("ALTER TABLE scans ADD COLUMN scan_scope ENUM('unknown', 'sast', 'sast_dependency') NOT NULL DEFAULT 'unknown' AFTER status");
+  const additions = [
+    ["vulnerabilities", "severity_score", "DECIMAL(3,1) NULL"],
+    ["vulnerabilities", "description_source", "ENUM('rule', 'semgrep') NOT NULL DEFAULT 'semgrep'"],
+    ["scan_findings", "code_context", "TEXT NULL"],
+    ["scan_findings", "context_start_line", "INT UNSIGNED NULL"],
+    ["scan_findings", "context_end_line", "INT UNSIGNED NULL"],
+  ];
+  for (const [table, column, definition] of additions) {
+    const [columns] = await connection.query("SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = ?", [database, table, column]);
+    if (!columns.length) await connection.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
   const [rows] = await connection.query("SELECT COUNT(*) AS count FROM information_schema.tables WHERE table_schema = ?", [database]);
   console.log(`MySQL schema ready: ${rows[0].count} tables. Existing records preserved.`);
 } catch (error) {

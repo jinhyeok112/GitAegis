@@ -37,6 +37,16 @@ class ExtractionTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     extract_source(archive, Path(directory) / "out")
 
+    def test_copies_only_supported_lockfiles_not_environment_or_npm_credentials(self):
+        with tempfile.TemporaryDirectory() as directory:
+            members = [("repo/package-lock.json", b'{"lockfileVersion":3,"packages":{}}', "file"), ("repo/.env.local", b"SECRET=private", "file"), ("repo/.npmrc", b"token=private", "file")]
+            archive = self.make_archive(directory, members)
+            target = Path(directory) / "out"
+            self.assertEqual(extract_source(archive, target), 1)
+            self.assertTrue((target / "package-lock.json").exists())
+            self.assertFalse((target / ".env.local").exists())
+            self.assertFalse((target / ".npmrc").exists())
+
     def test_rejects_links(self):
         with tempfile.TemporaryDirectory() as directory:
             archive = self.make_archive(directory, [("repo/src/file.py", b"", "link")])

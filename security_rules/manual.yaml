@@ -3,44 +3,54 @@ rules:
   - id: gitaegis-dynamic-eval-js
     languages: [javascript, typescript]
     severity: WARNING
-    message: "동적 eval 호출입니다. 외부 입력이 실행 코드로 전달되는지 검토하세요."
+    message: "외부 입력 코드 실행(CWE-95)"
     metadata:
+      gitaegis_title: "입력값이 프로그램 코드로 실행될 수 있음(CWE-95)"
       cwe: ["CWE-95: Eval Injection"]
-      gitaegis_impact: "외부 입력이 eval에 전달되면 공격자가 애플리케이션 권한으로 코드를 실행해 데이터에 접근하거나 서비스 동작을 바꿀 수 있습니다. 입력의 출처와 실제 실행 경로를 확인해야 합니다."
+      gitaegis_description: "입력값이 eval에 전달되는지 확인하고, eval 대신 허용된 동작만 선택해 실행하도록 바꾸세요."
+      gitaegis_impact: "사용자가 넣은 값이 프로그램 코드로 실행되어 데이터가 유출되거나 서비스 동작이 바뀔 가능성이 있습니다."
     patterns:
       - pattern: eval($CODE)
       - pattern-not: eval("...")
   - id: gitaegis-disabled-tls-js
     languages: [javascript, typescript]
     severity: ERROR
-    message: "TLS 인증서 검증이 비활성화되어 있습니다. rejectUnauthorized를 true로 설정하세요."
+    message: "TLS 인증서 검증 해제(CWE-295)"
     metadata:
+      gitaegis_title: "서버 인증서 미확인으로 통신 위조 가능(CWE-295)"
       cwe: ["CWE-295: Improper Certificate Validation"]
-      gitaegis_impact: "통신 상대의 인증서를 검증하지 않아 위조된 서버를 신뢰할 수 있습니다. 중간자 공격으로 전송 데이터가 유출되거나 변조될 위험이 있습니다."
+      gitaegis_description: "rejectUnauthorized를 true로 설정하여 통신 상대의 인증서를 확인하세요."
+      gitaegis_impact: "통신 상대가 정상 서버인지 확인하지 않아 가짜 서버와 연결될 수 있습니다. 중간자 공격으로 전송 중인 데이터가 유출되거나 변조될 가능성이 있습니다."
     pattern: "{..., rejectUnauthorized: false, ...}"
   - id: gitaegis-shell-command-python
     languages: [python]
     severity: WARNING
-    message: "셸을 사용하는 명령 실행입니다. 외부 입력을 확인하고 인수 배열과 shell=False를 사용하세요."
+    message: "셸 명령 실행(CWE-78)"
     metadata:
+      gitaegis_title: "서버 명령 실행 시 입력값 확인 필요(CWE-78)"
       cwe: ["CWE-78: OS Command Injection"]
-      gitaegis_impact: "외부 입력이 셸 명령에 포함되면 공격자가 추가 명령을 실행해 서버 파일이나 데이터에 접근할 수 있습니다. shell=True만으로 공격이 확정되는 것은 아니므로 입력값의 도달 경로를 확인해야 합니다."
+      gitaegis_description: "외부 입력이 명령에 포함되는지 확인하고, 명령과 인수를 배열로 분리해 shell=False로 실행하세요."
+      gitaegis_impact: "사용자 입력이 셸 명령에 포함되면 서버에서 의도하지 않은 명령이 실행될 가능성이 있습니다."
     pattern: subprocess.run(..., shell=True, ...)
   - id: gitaegis-dynamic-eval-python
     languages: [python]
     severity: WARNING
-    message: "동적 eval 호출입니다. 외부 입력이 실행 코드로 전달되는지 검토하세요."
+    message: "외부 입력 코드 실행(CWE-95)"
     metadata:
+      gitaegis_title: "입력값이 프로그램 코드로 실행될 수 있음(CWE-95)"
       cwe: ["CWE-95: Eval Injection"]
-      gitaegis_impact: "외부 입력이 eval에 전달되면 공격자가 애플리케이션 권한으로 코드를 실행해 데이터에 접근하거나 서비스 동작을 바꿀 수 있습니다. 입력의 출처와 실제 실행 경로를 확인해야 합니다."
+      gitaegis_description: "입력값이 eval에 전달되는지 확인하고, eval 대신 허용된 동작만 선택해 실행하도록 바꾸세요."
+      gitaegis_impact: "사용자가 넣은 값이 프로그램 코드로 실행되어 데이터가 유출되거나 서비스 동작이 바뀔 가능성이 있습니다."
     patterns:
       - pattern: eval($CODE)
       - pattern-not: eval("...")
   - id: gitaegis-concatenated-sql-python
     languages: [python]
     severity: WARNING
-    message: "SQL 문자열을 결합하고 있습니다. 입력값을 SQL 매개변수로 분리하세요."
+    message: "SQL 문자열 직접 결합(CWE-89)"
     metadata:
+      gitaegis_title: "입력값으로 DB 조회·변경 가능(CWE-89)"
       cwe: ["CWE-89: SQL Injection"]
-      gitaegis_impact: "외부 입력이 SQL 구문을 바꿀 수 있다면 의도하지 않은 데이터 조회·변경·삭제나 인증 우회가 발생할 수 있습니다. 실제 영향은 쿼리와 DB 계정 권한에 따라 달라집니다."
+      gitaegis_description: "입력값이 SQL 문장을 바꿀 수 있는지 확인하고, 쿼리와 입력값을 분리해 전달하세요."
+      gitaegis_impact: "입력값에 따라 다른 사람의 데이터를 조회하거나 변경·삭제할 가능성이 있습니다."
     pattern: $CURSOR.execute($QUERY + $VALUE, ...)

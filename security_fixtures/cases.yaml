@@ -1,30 +1,16 @@
 rules:
-  - id: gitaegis-fixture-sql-injection
-    languages: [python]
-    severity: ERROR
-    message: "SQL 삽입 패턴(CWE-89): 외부 입력을 SQL 문자열에 직접 결합합니다. 입력값을 쿼리 매개변수로 분리하세요. 실제 DB를 호출하지 않는 검사용 모형 코드입니다."
-    metadata:
-      category: security
-      cwe: ["CWE-89: SQL Injection"]
-      gitaegis_fixture: true
-      gitaegis_impact: "실제 DB 쿼리에 이 패턴을 사용하면 입력값이 SQL 구문을 바꿔 의도하지 않은 데이터 조회·변경·삭제나 인증 우회를 일으킬 수 있습니다. 실제 영향은 쿼리와 DB 계정 권한에 따라 달라집니다."
-    mode: taint
-    pattern-sources:
-      - pattern: fixture_input(...)
-    pattern-sinks:
-      - patterns:
-          - pattern: fixture_sink.execute($QUERY, ...)
-          - focus-metavariable: $QUERY
-
   - id: gitaegis-fixture-command-injection
     languages: [python]
     severity: ERROR
-    message: "명령 삽입 패턴(CWE-78): 외부 입력을 셸 명령 문자열에 직접 결합합니다. 셸을 사용하지 않고 인수 배열로 전달하세요. 실제 명령을 실행하지 않는 검사용 모형 코드입니다."
+    message: "명령 삽입(CWE-78)"
     metadata:
+      gitaegis_title: "입력값으로 서버 명령 실행 가능(CWE-78)"
       category: security
       cwe: ["CWE-78: OS Command Injection"]
       gitaegis_fixture: true
-      gitaegis_impact: "실제 셸 실행에 이 패턴을 사용하면 공격자가 추가 명령을 실행해 서버 파일이나 데이터에 접근할 수 있습니다. 실제 영향은 실행 계정의 권한과 입력값 검증 여부에 따라 달라집니다."
+      gitaegis_score: "9.1"
+      gitaegis_description: "명령과 입력값을 인수 배열로 분리하고 shell=False로 실행하세요."
+      gitaegis_impact: "사용자가 넣은 값이 서버 명령으로 실행되어 파일이나 데이터가 유출·변경될 가능성이 있습니다."
     mode: taint
     pattern-sources:
       - pattern: fixture_input(...)
@@ -33,53 +19,18 @@ rules:
           - pattern: fixture_sink.run($COMMAND, shell=True)
           - focus-metavariable: $COMMAND
 
-  - id: gitaegis-fixture-path-traversal
-    languages: [python]
-    severity: WARNING
-    message: "경로 조작 패턴(CWE-22): 외부 입력을 파일 경로에 직접 결합합니다. 허용된 파일명만 선택하도록 제한하세요. 실제 파일을 읽지 않는 검사용 모형 코드입니다."
-    metadata:
-      category: security
-      cwe: ["CWE-22: Path Traversal"]
-      gitaegis_fixture: true
-      gitaegis_impact: "실제 파일 읽기에 이 패턴을 사용하면 ../ 같은 입력으로 허용된 폴더를 벗어나 설정 파일이나 민감한 데이터를 읽을 수 있습니다. 실제 영향은 접근 가능한 경로와 파일 권한에 따라 달라집니다."
-    mode: taint
-    pattern-sources:
-      - pattern: fixture_input(...)
-    pattern-sanitizers:
-      - pattern: allow_filename(...)
-    pattern-sinks:
-      - patterns:
-          - pattern: fixture_sink.read($PATH)
-          - focus-metavariable: $PATH
-
-  - id: gitaegis-fixture-html-injection
-    languages: [python]
-    severity: WARNING
-    message: "HTML 삽입 패턴(CWE-79): 외부 입력을 HTML 문자열에 직접 삽입합니다. 출력 위치에 맞게 HTML 특수문자를 이스케이프하세요. 실제 화면에 출력하지 않는 검사용 모형 코드입니다."
-    metadata:
-      category: security
-      cwe: ["CWE-79: Cross-site Scripting"]
-      gitaegis_fixture: true
-      gitaegis_impact: "실제 HTML 응답에 이 패턴을 사용하면 공격자가 삽입한 스크립트가 방문자의 브라우저에서 실행될 수 있습니다. 페이지 내용 변조나 사용자 권한으로 요청을 보내는 등의 피해가 발생할 수 있습니다."
-    mode: taint
-    pattern-sources:
-      - pattern: fixture_input(...)
-    pattern-sanitizers:
-      - pattern: html.escape(...)
-    pattern-sinks:
-      - patterns:
-          - pattern: fixture_sink.render($HTML)
-          - focus-metavariable: $HTML
-
   - id: gitaegis-fixture-open-redirect
     languages: [python]
     severity: WARNING
-    message: "외부 리다이렉트 패턴(CWE-601): 외부 입력을 이동 주소로 그대로 사용합니다. 허용된 내부 경로만 선택하도록 제한하세요. 실제 페이지 이동이 없는 검사용 모형 코드입니다."
+    message: "외부 리다이렉트(CWE-601)"
     metadata:
+      gitaegis_title: "정상 링크로 피싱 사이트 유도 가능(CWE-601)"
       category: security
       cwe: ["CWE-601: Open Redirect"]
       gitaegis_fixture: true
-      gitaegis_impact: "실제 서비스의 페이지 이동에 이 패턴을 사용하면 사용자를 공격자가 지정한 외부 사이트로 보낼 수 있습니다. 정상 서비스의 링크를 이용해 피싱 페이지로 유도하고 로그인 정보 입력을 속일 위험이 있습니다."
+      gitaegis_score: "6.1"
+      gitaegis_description: "외부 입력값을 검증하여 허용된 내부 경로로 제한하고 외부 URL을 거부하세요."
+      gitaegis_impact: "정상 사이트의 링크를 이용해 사용자를 피싱 사이트로 유도할 가능성이 있습니다."
     mode: taint
     pattern-sources:
       - pattern: fixture_input(...)
@@ -89,3 +40,94 @@ rules:
       - patterns:
           - pattern: fixture_sink.redirect($TARGET)
           - focus-metavariable: $TARGET
+
+  - id: gitaegis-fixture-log-injection
+    languages: [python]
+    severity: WARNING
+    message: "로그 삽입(CWE-117)"
+    metadata:
+      gitaegis_title: "입력값으로 가짜 로그 기록 가능(CWE-117)"
+      category: security
+      cwe: ["CWE-117: Improper Output Neutralization for Logs"]
+      gitaegis_fixture: true
+      gitaegis_score: "5.3"
+      gitaegis_description: "로그에 넣기 전에 입력값의 줄바꿈과 제어 문자를 제거하거나 구조화된 로그를 사용하세요."
+      gitaegis_impact: "입력값으로 가짜 로그 기록을 만들어 누가 어떤 작업을 했는지 확인하기 어려워질 가능성이 있습니다."
+    mode: taint
+    pattern-sources:
+      - pattern: fixture_input(...)
+    pattern-sanitizers:
+      - pattern: clean_log(...)
+    pattern-sinks:
+      - pattern: fixture_sink.log(...)
+
+  - id: gitaegis-fixture-unsafe-deserialization
+    languages: [python]
+    severity: ERROR
+    message: "안전하지 않은 역직렬화(CWE-502)"
+    metadata:
+      gitaegis_title: "외부 데이터 처리 중 악성 코드 실행 가능(CWE-502)"
+      category: security
+      cwe: ["CWE-502: Deserialization of Untrusted Data"]
+      gitaegis_fixture: true
+      gitaegis_score: "8.1"
+      gitaegis_description: "외부 입력에 pickle을 사용하지 말고 JSON 같은 데이터 전용 형식으로 읽은 뒤 값의 구조와 형식을 검사하세요."
+      gitaegis_impact: "외부에서 받은 데이터를 읽는 과정에서 서버가 의도하지 않은 코드를 실행할 가능성이 있습니다."
+    mode: taint
+    pattern-sources:
+      - pattern: fixture_input(...)
+    pattern-sinks:
+      - patterns:
+          - pattern: fixture_sink.deserialize($DATA, format="pickle")
+          - focus-metavariable: $DATA
+
+  - id: gitaegis-fixture-template-injection
+    languages: [python]
+    severity: ERROR
+    message: "서버 템플릿 삽입(CWE-1336)"
+    metadata:
+      gitaegis_title: "화면 생성 중 입력값이 명령으로 실행될 수 있음(CWE-1336)"
+      category: security
+      cwe: ["CWE-1336: Improper Neutralization in Template Engine"]
+      gitaegis_fixture: true
+      gitaegis_score: "9.1"
+      gitaegis_description: "화면을 만드는 템플릿은 고정하고 사용자 입력은 별도의 데이터로 전달하세요."
+      gitaegis_impact: "사용자 입력이 화면의 처리 명령으로 해석되어 서버 정보가 노출되거나 코드가 실행될 가능성이 있습니다."
+    mode: taint
+    pattern-sources:
+      - pattern: fixture_input(...)
+    pattern-sinks:
+      - patterns:
+          - pattern: fixture_sink.template($SOURCE, ...)
+          - focus-metavariable: $SOURCE
+
+  # Messages are preserved verbatim from the linked upstream Semgrep rules.
+  # Patterns target inert in-memory sinks instead of real crypto/network APIs.
+  - id: gitaegis-fixture-md5
+    languages: [python]
+    severity: WARNING
+    message: >-
+      Detected MD5 hash algorithm which is considered insecure. MD5 is not
+      collision resistant and is therefore not suitable as a cryptographic
+      signature. Use SHA256 or SHA3 instead.
+    metadata:
+      category: security
+      cwe: ["CWE-327: Use of a Broken or Risky Cryptographic Algorithm"]
+      gitaegis_fixture: true
+      gitaegis_title: "취약한 MD5 사용으로 데이터 위조 위험(CWE-327)"
+      source-rule-url: https://github.com/semgrep/semgrep-rules/blob/develop/python/lang/security/insecure-hash-algorithms-md5.yaml
+    pattern: fixture_sink.digest($DATA, algorithm="md5")
+
+  - id: gitaegis-fixture-weak-tls
+    languages: [python]
+    severity: WARNING
+    message: >-
+      An insecure SSL version was detected. TLS versions 1.0, 1.1, and all SSL versions
+      are considered weak encryption and are deprecated. Use 'ssl.PROTOCOL_TLSv1_2' or higher.
+    metadata:
+      category: security
+      cwe: ["CWE-326: Inadequate Encryption Strength"]
+      gitaegis_fixture: true
+      gitaegis_title: "오래된 TLS 사용으로 통신 유출 위험(CWE-326)"
+      source-rule-url: https://github.com/semgrep/semgrep-rules/blob/develop/python/lang/security/audit/weak-ssl-version.yaml
+    pattern: fixture_sink.connection(protocol="TLSv1")

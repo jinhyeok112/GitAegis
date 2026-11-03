@@ -6,6 +6,7 @@ import sys
 import tarfile
 
 EXTENSIONS = {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".py"}
+LOCKFILES = {"package-lock.json", "npm-shrinkwrap.json"}
 EXCLUDED = {".git", ".tools", ".next", "node_modules", "vendor", "venv", ".venv", "__pycache__", "dist", "build", "coverage"}
 
 
@@ -36,9 +37,10 @@ def extract_source(archive, destination):
             if total > 100 * 1024 * 1024:
                 raise ValueError("Archive exceeds expanded size limit")
             relative = Path(*parts[1:])
-            if not parts[1:] or any(part in EXCLUDED for part in parts[1:-1]) or relative.suffix.lower() not in EXTENSIONS:
+            if not parts[1:] or any(part in EXCLUDED for part in parts[1:-1]) or (relative.suffix.lower() not in EXTENSIONS and relative.name not in LOCKFILES):
                 continue
-            if member.size > 1024 * 1024 or copied >= 3000:
+            file_limit = (4 if relative.name in LOCKFILES else 1) * 1024 * 1024
+            if member.size > file_limit or copied >= 3000:
                 raise ValueError("Source exceeds scan limits")
             target = (destination / relative).resolve()
             if not target.is_relative_to(destination) or target == destination:
@@ -51,7 +53,7 @@ def extract_source(archive, destination):
             source = bundle.extractfile(member)
             if source is None:
                 raise ValueError("Missing archive file data")
-            data = source.read(1024 * 1024 + 1)
+            data = source.read(file_limit + 1)
             if len(data) != member.size:
                 raise ValueError("Invalid source size")
             target.write_bytes(data)

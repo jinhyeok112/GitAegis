@@ -4,8 +4,10 @@ import { isDatabaseConfigured } from "@/lib/server/db";
 import { saveGitHubAccount } from "@/lib/server/github-account";
 
 // A persistent cookie survives browser restarts. Keep the encryption key stable
-// across application restarts so existing sessions remain readable.
-export const SESSION_MAX_AGE = 7 * 24 * 60 * 60;
+// across application restarts so existing sessions remain readable. Auth.js
+// renews both the JWT and cookie on session refresh; GitHub API credentials
+// have their own validity and are not governed by this browser-session limit.
+export const SESSION_MAX_AGE = 90 * 24 * 60 * 60;
 
 export function isGitHubConfigured() {
   return Boolean(

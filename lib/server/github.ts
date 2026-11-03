@@ -24,7 +24,7 @@ async function githubRequest(path: string, accessToken: string) {
   } catch {
     throw new ServiceError("GITHUB_UNAVAILABLE", "GitHub 연결이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.", 502);
   }
-  if (response.status === 401) throw new ServiceError("GITHUB_RECONNECT_REQUIRED", "GitHub 인증이 만료됐습니다. 계정을 다시 연결해 주세요.", 409);
+  if (response.status === 401) throw new ServiceError("GITHUB_RECONNECT_REQUIRED", "GitHub가 저장소 접근 인증을 거절했습니다. GitHub 권한을 다시 연결해 주세요.", 409);
   if (response.status === 403 || response.status === 429) throw new ServiceError("GITHUB_ACCESS_DENIED", "GitHub API 요청 한도 또는 조직 접근 권한을 확인해 주세요.", 403);
   if (response.status === 404) throw new ServiceError("REPOSITORY_NOT_FOUND", "이 저장소에 접근할 수 없습니다.", 404);
   if (!response.ok) throw new ServiceError("GITHUB_UNAVAILABLE", "GitHub에서 저장소를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.", 502);

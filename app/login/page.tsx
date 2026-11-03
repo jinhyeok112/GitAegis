@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth, isGitHubConfigured } from "@/auth";
+import { auth, isGitHubConfigured, SESSION_MAX_AGE } from "@/auth";
 import { loginWithGitHub } from "@/app/actions/auth";
 import LoginButton from "@/components/login-button";
 
@@ -16,9 +16,8 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string | string[] }>;
 }) {
   const session = await auth();
-  if (session?.user) redirect("/");
-
   const { error } = await searchParams;
+  if (session?.user) redirect(typeof error === "string" ? "/?githubReconnect=failed" : "/");
   const configured = isGitHubConfigured();
   const errorMessage = !configured
     ? errorMessages.Configuration
@@ -46,7 +45,7 @@ export default async function LoginPage({
           <LoginButton disabled={!configured} />
         </form>
         <small>공개·비공개 저장소 목록을 불러옵니다.<br />GitHub repo 권한에는 쓰기도 포함되며, 서비스는 조회만 수행합니다.</small>
-        <small>로그인은 7일간 유지됩니다.<br />공용 PC에서는 사용 후 로그아웃해 주세요.</small>
+        <small>로그인은 마지막 세션 갱신부터 {SESSION_MAX_AGE / 86400}일간 유지됩니다.<br />공용 PC에서는 사용 후 로그아웃해 주세요.</small>
       </section>
     </main>
   );

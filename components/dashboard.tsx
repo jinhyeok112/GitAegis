@@ -2,14 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "next-auth";
-import { SessionProvider, signOut, useSession } from "next-auth/react";
+import { SessionProvider, signIn, signOut, useSession } from "next-auth/react";
 import ActivityChart from "@/components/activity-chart";
 import AnalysisSettings from "@/components/analysis-settings";
+import AiModelSettings from "@/components/ai-model-settings";
 import DatabaseDesignView from "@/components/database-design";
 import type { DatabaseDesign } from "@/lib/database-design";
 import VulnerabilityDetail from "@/components/vulnerability-detail";
 import type { DashboardData, GitHubRepository, ScanPolicy, Vulnerability } from "@/lib/types";
-import { loginWithGitHub } from "@/app/actions/auth";
+import { loginWithGitHub, reconnectGitHub } from "@/app/actions/auth";
+import { automaticallyReconnectGitHub, clearGitHubReconnectAttempt } from "@/lib/github-reconnect";
 
 type View = "overview" | "repositories" | "analysis" | "vulnerabilities" | "account" | "database";
 type IconName = "shield" | "grid" | "repo" | "calendar" | "alert" | "usage" | "search" | "chevron" | "lock" | "check" | "close" | "logout";
@@ -41,16 +43,18 @@ const severityLabel = { critical: "치명적", high: "높음", medium: "중간",
 const statusLabel = { new: "새로 발견", open: "미해결", triaging: "검토 중", resolved: "해결", false_positive: "오탐", accepted_risk: "위험 수용" };
 const scanStatusLabel = { queued: "대기", running: "검사 중", completed: "완료", failed: "실패", canceled: "취소" };
 
-export default function Dashboard({ databaseDesign, session, initialData, initialError }: { databaseDesign: DatabaseDesign; session: Session; initialData: DashboardData | null; initialError: string }) {
-  return <SessionProvider session={session} refetchInterval={300}><DashboardContent databaseDesign={databaseDesign} initialData={initialData} initialError={initialError} /></SessionProvider>;
+type ReconnectState = "check" | "failed" | null;
+export default function Dashboard({ databaseDesign, session, initialData, initialError, githubReconnect }: { databaseDesign: DatabaseDesign; session: Session; initialData: DashboardData | null; initialError: string; githubReconnect: ReconnectState }) {
+  return <SessionProvider session={session} refetchInterval={300}><DashboardContent databaseDesign={databaseDesign} initialData={initialData} initialError={initialError} githubReconnect={githubReconnect} /></SessionProvider>;
 }
 
-function DashboardContent({ databaseDesign, initialData, initialError }: { databaseDesign: DatabaseDesign; initialData: DashboardData | null; initialError: string }) {
+function DashboardContent({ databaseDesign, initialData, initialError, githubReconnect }: { databaseDesign: DatabaseDesign; initialData: DashboardData | null; initialError: string; githubReconnect: ReconnectState }) {
   const { data: session, status } = useSession({
     required: true,
     onUnauthenticated() { window.location.replace("/login"); },
   });
   const user = session?.user;
+  const userId = user?.id ?? "";
   const displayName = user?.name || user?.githubLogin || "GitHub 사용자";
   const initial = Array.from(displayName)[0]?.toUpperCase() ?? "G";
   const [loggingOut, setLoggingOut] = useState(false);
@@ -61,6 +65,10 @@ function DashboardContent({ databaseDesign, initialData, initialError }: { datab
   const [githubRepositories, setGitHubRepositories] = useState<GitHubRepository[]>([]);
   const [githubLoading, setGitHubLoading] = useState(false);
   const [githubError, setGitHubError] = useState("");
+  const [githubReconnectRequired, setGitHubReconnectRequired] = useState(githubReconnect === "failed");
+  const [githubRecovery, setGitHubRecovery] = useState<"idle" | "connecting" | "failed">(githubReconnect === "failed" ? "failed" : "idle");
+  const recoveryStarted = useRef(false);
+  const reconnectCheckStarted = useRef(false);
   const [pendingRepository, setPendingRepository] = useState<string | null>(null);
   const [scanningRepository, setScanningRepository] = useState<string | null>(null);
   const [scanMessage, setScanMessage] = useState("");
@@ -88,11 +96,50 @@ function DashboardContent({ databaseDesign, initialData, initialError }: { datab
     try {
       const response = await fetch("/api/github/repositories", { cache: "no-store" });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "저장소를 불러오지 못했습니다.");
+      if (!response.ok) {
+        if (result.code === "GITHUB_RECONNECT_REQUIRED") setGitHubReconnectRequired(true);
+        throw new Error(result.error || "저장소를 불러오지 못했습니다.");
+      }
+      setGitHubReconnectRequired(false);
+      setGitHubRecovery("idle");
+      recoveryStarted.current = false;
+      try { clearGitHubReconnectAttempt(window.sessionStorage, userId); } catch { /* Browser storage can be disabled. */ }
       setGitHubRepositories(result.repositories);
-    } catch (error) { setGitHubError(error instanceof Error ? error.message : "저장소를 불러오지 못했습니다."); }
+      return true;
+    } catch (error) { setGitHubError(error instanceof Error ? error.message : "저장소를 불러오지 못했습니다."); return false; }
     finally { setGitHubLoading(false); }
-  }, []);
+  }, [userId]);
+  useEffect(() => {
+    if (!githubReconnectRequired || githubRecovery === "failed" || recoveryStarted.current) return;
+    recoveryStarted.current = true;
+    async function recover() {
+      setGitHubRecovery("connecting");
+      try {
+        const outcome = await automaticallyReconnectGitHub({ userId, storage: window.sessionStorage,
+          begin: () => signIn("github", { redirect: false, redirectTo: "/?githubReconnect=check" }),
+          navigate: url => window.location.assign(url),
+        });
+        if (outcome === "failed") setGitHubRecovery("failed");
+      } catch { setGitHubRecovery("failed"); }
+    }
+    void recover();
+  }, [githubReconnectRequired, githubRecovery, userId]);
+  useEffect(() => {
+    if (githubRecovery !== "connecting") return;
+    const returned = (event: PageTransitionEvent) => { if (event.persisted) setGitHubRecovery("failed"); };
+    window.addEventListener("pageshow", returned);
+    return () => window.removeEventListener("pageshow", returned);
+  }, [githubRecovery]);
+  useEffect(() => {
+    if (!githubReconnect || reconnectCheckStarted.current) return;
+    reconnectCheckStarted.current = true;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("githubReconnect");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    if (githubReconnect === "check") void Promise.resolve().then(loadGitHubRepositories).then(success => {
+      if (!success) { setGitHubReconnectRequired(true); setGitHubRecovery("failed"); }
+    });
+  }, [githubReconnect, loadGitHubRepositories]);
   useEffect(() => {
     const dialog = dialogRef.current;
     if (selected && dialog && !dialog.open) dialog.showModal();
@@ -127,7 +174,10 @@ function DashboardContent({ databaseDesign, initialData, initialError }: { datab
       const stored = repositories.find(repo => repo.githubId === githubId);
       const response = await fetch("/api/repositories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ githubRepositoryId: githubId, connected: !stored?.connected }) });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "저장소 연결을 변경하지 못했습니다.");
+      if (!response.ok) {
+        if (result.code === "GITHUB_RECONNECT_REQUIRED") setGitHubReconnectRequired(true);
+        throw new Error(result.error || "저장소 연결을 변경하지 못했습니다.");
+      }
       await loadData();
       if (stored && repositoryId === stored.id && !recordedRepositoryIds.has(stored.id)) setRepositoryId("all");
     } catch (error) { setGitHubError(error instanceof Error ? error.message : "저장소 연결을 변경하지 못했습니다."); }
@@ -147,8 +197,11 @@ function DashboardContent({ databaseDesign, initialData, initialError }: { datab
     try {
       const response = await fetch(`/api/repositories/${encodeURIComponent(id)}/scans`, { method: "POST" });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "검사를 완료하지 못했습니다.");
-      setScanMessage(`수동 코드 검사 완료 · ${result.findings}건 탐지 · 커밋 ${result.commitSha.slice(0, 7)}`);
+      if (!response.ok) {
+        if (result.code === "GITHUB_RECONNECT_REQUIRED") setGitHubReconnectRequired(true);
+        throw new Error(result.error || "검사를 완료하지 못했습니다.");
+      }
+      setScanMessage(`수동 검사 완료 · 코드 ${result.sastCount}건 · 의존성 ${result.scope === "sast_dependency" ? `${result.dependencyCount}건` : "미실행"} · 커밋 ${result.commitSha.slice(0, 7)}`);
     } catch (error) {
       setScanMessage("");
       setScanError(error instanceof Error ? error.message : "검사를 완료하지 못했습니다.");
@@ -179,7 +232,7 @@ function DashboardContent({ databaseDesign, initialData, initialError }: { datab
       {selectableRepositories.filter(repo => repositoryId === "all" || repo.id === repositoryId).map(repo => {
         const items = filteredVulnerabilities.filter(item => item.repositoryId === repo.id);
         if (items.length === 0 && repositoryId === "all") return null;
-        return <section className="finding-group" key={repo.id} aria-label={`${repo.name} 취약점`}><div className="group-heading"><Icon name="repo" size={17} /><h3>{repo.name}</h3>{!repo.connected && <span className="history-label">기록만 보관</span>}<span>{items.length}건</span></div>{items.length === 0 ? <p className="empty-state">이 저장소에서 발견된 취약점이 없습니다.</p> : items.map(item => <button className="finding-row" key={item.id} onClick={() => setSelected(item)}><span className={`severity severity-${item.severity}`}>{severityLabel[item.severity]}</span><span className="finding-main"><strong>{item.title}</strong>{item.dependency && <span className="dependency-summary"><b>{item.dependency.packageName}@{item.dependency.installedVersion}</b><span className="dependency-upgrade">{item.dependency.fixedVersion ? `${item.dependency.fixedVersion} 이상으로 업그레이드` : "수정 버전 미공개"}</span></span>}<span className="finding-file">{item.filePath}{item.startLine !== null && ` · ${item.startLine}–${item.endLine}행`}</span></span><span className="finding-state">{statusLabel[item.status]}</span><Icon name="chevron" size={17} /></button>)}</section>;
+        return <section className="finding-group" key={repo.id} aria-label={`${repo.name} 취약점`}><div className="group-heading"><Icon name="repo" size={17} /><h3>{repo.name}</h3>{!repo.connected && <span className="history-label">기록만 보관</span>}<span>{items.length}건</span></div>{items.length === 0 ? <p className="empty-state">이 저장소에서 발견된 취약점이 없습니다.</p> : items.map(item => <button className="finding-row" key={item.id} onClick={() => setSelected(item)}><span className={`severity severity-${item.severity}`}>{severityLabel[item.severity]}</span><span className="finding-main"><strong>{item.title}</strong>{item.dependency && <span className="dependency-summary"><b>{item.dependency.packageName}@{item.dependency.installedVersion}</b><span className="dependency-upgrade">{item.dependency.fixedVersion ? `공지 수정 후보 ${item.dependency.fixedVersion} · 다른 취약점 확인 필요` : "수정 버전 확인 필요"}</span></span>}<span className="finding-file">{item.filePath}{item.startLine !== null && ` · ${item.startLine}–${item.endLine}행`}</span></span><span className="finding-state">{statusLabel[item.status]}</span><Icon name="chevron" size={17} /></button>)}</section>;
       })}
       {filteredVulnerabilities.length === 0 && repositoryId === "all" && <p className="empty-state">저장된 취약점 결과가 없습니다. 아직 검사하지 않은 저장소의 안전성을 의미하지는 않습니다.</p>}
     </section>;
@@ -195,7 +248,7 @@ function DashboardContent({ databaseDesign, initialData, initialError }: { datab
       {dataError && <p className="data-error" role="alert">{dataError}</p>}
       {scanMessage && <p className="scan-notice" role="status">{scanMessage}</p>}
         {scanError && <p className="data-error" role="alert">{scanError}</p>}
-      {(!data.github.connected || !data.github.privateAccess) && <section className="panel github-connect"><h2>GitHub 저장소 권한 연결</h2><p>공개·비공개 저장소를 모두 불러오려면 GitHub에서 저장소 접근을 한 번 승인해 주세요.</p><form action={loginWithGitHub}><button className="button primary">GitHub 저장소 권한 승인</button></form><small>GitHub OAuth의 repo 권한에는 쓰기도 포함됩니다. 현재 서비스는 저장소 조회만 수행합니다.</small></section>}
+      {(!data.github.connected || !data.github.privateAccess || githubReconnectRequired) && <section className="panel github-connect"><h2>{githubReconnectRequired ? "GitHub 연결 복구" : "GitHub 저장소 권한 연결"}</h2>{githubReconnectRequired ? githubRecovery === "failed" ? <><p role="alert">자동 재연결을 완료하지 못했습니다. GitHub에서 권한을 다시 승인해 주세요. 기존 검사 기록과 설정은 유지됩니다.</p><form action={reconnectGitHub}><button className="button primary">GitHub 권한 다시 연결</button></form></> : <p role="status">GitHub에 자동으로 다시 연결하고 있습니다…</p> : <><p>공개·비공개 저장소를 모두 불러오려면 GitHub에서 저장소 접근을 한 번 승인해 주세요.</p><form action={loginWithGitHub}><button className="button primary">GitHub 저장소 권한 승인</button></form></>}<small>GitHub OAuth의 repo 권한에는 쓰기도 포함됩니다. 현재 서비스는 저장소 조회만 수행합니다.</small></section>}
 
       {view === "overview" && <>
         <section className="dashboard-summary" aria-label="확인할 항목">
@@ -213,13 +266,13 @@ function DashboardContent({ databaseDesign, initialData, initialError }: { datab
       </>}
       {view === "vulnerabilities" && <><div className="filter-toolbar">{repositoryFilter()}<label className="repository-filter"><span>종류</span><select aria-label="취약점 종류" value={findingKind} onChange={event => setFindingKind(event.target.value)}><option value="all">취약점 전체</option><option value="code">코드 취약점</option><option value="dependency">의존성 취약점</option></select></label></div>{findingsPanel()}</>}
 
-      {view === "analysis" && <AnalysisSettings repositories={connectedRepositories} scans={scans} policies={scanPolicies} onSave={savePolicy} onOpenRepositories={() => navigate("repositories")} />}
+      {view === "analysis" && <><AiModelSettings onSaved={loadData} /><AnalysisSettings repositories={connectedRepositories} scans={scans} policies={scanPolicies} onSave={savePolicy} onOpenRepositories={() => navigate("repositories")} /></>}
       {view === "database" && <DatabaseDesignView design={databaseDesign} />}
 
       {view === "repositories" && <section><div className="repository-toolbar"><div className="account-select"><Icon name="repo" /><span>@{user.githubLogin}</span><span className="connection-text">공개·비공개 저장소</span></div><label className="search-field"><Icon name="search" /><input aria-label="저장소 검색" placeholder="저장소 검색" value={search} onChange={event => setSearch(event.target.value)} /></label></div>{data.github.connected && <div className="repository-actions"><button className="button secondary" disabled={githubLoading} onClick={() => void loadGitHubRepositories()}>{githubLoading ? "불러오는 중…" : "목록 새로고침"}</button></div>}{githubError && <p className="data-error" role="alert">{githubError}</p>}<div className="panel import-list">{filteredRepos.map(repo => {
         const stored = repositories.find(item => item.githubId === repo.githubId);
         return <div className="import-row" key={repo.githubId}><span className="repo-avatar">{repo.name[0].toUpperCase()}</span><span className="import-name"><strong><a href={repo.url} target="_blank" rel="noopener noreferrer">{repo.name}</a></strong><span><Icon name="lock" size={13} />{repo.visibility === "private" ? "비공개" : "공개"} · {stored?.connected ? "연결됨" : stored && recordedRepositoryIds.has(stored.id) ? "연결 해제 · 기록 보관" : "연결 가능"}</span></span><div className="repository-row-actions">{stored?.connected && <button className="button primary" disabled={scanningRepository !== null || pendingRepository !== null} onClick={() => void startScan(stored.id)}>{scanningRepository === stored.id ? "검사 중…" : "수동 검사"}</button>}<button className={`button ${stored?.connected ? "secondary" : "primary"}`} disabled={pendingRepository !== null || scanningRepository !== null || activeScans.some(scan => scan.repositoryId === stored?.id)} onClick={() => void toggleRepository(repo.githubId)}>{pendingRepository === repo.githubId ? "저장 중…" : stored?.connected ? "연결 해제" : "연결하기"}</button></div></div>;
-      })}{!githubLoading && !githubError && filteredRepos.length === 0 && <p className="empty-state">{data.github.connected ? "표시할 저장소가 없습니다." : "먼저 GitHub 저장소 접근을 연결해 주세요."}</p>}{githubLoading && <p className="empty-state" role="status">GitHub 저장소 목록을 불러오고 있습니다.</p>}</div><p className="scan-scope-note">수동 검사는 GitHub 기본 브랜치의 JavaScript·TypeScript·Python 코드를 정적 분석합니다. 저장소 코드를 실행하지 않으며, 의존성 검사는 포함하지 않습니다.</p></section>}
+      })}{!githubLoading && !githubError && filteredRepos.length === 0 && <p className="empty-state">{data.github.connected ? "표시할 저장소가 없습니다." : "먼저 GitHub 저장소 접근을 연결해 주세요."}</p>}{githubLoading && <p className="empty-state" role="status">GitHub 저장소 목록을 불러오고 있습니다.</p>}</div><p className="scan-scope-note">수동 검사는 GitHub 기본 브랜치의 코드를 정적 분석하고 npm 잠금 파일이 있으면 의존성을 검사합니다. AI는 탐지된 문제의 수정안 작성에 사용합니다.</p></section>}
 
       {view === "account" && <div className="account-content">
         <section className="panel github-panel"><div className="panel-heading"><h2>GitHub 계정</h2><span className="connected-status"><Icon name="check" size={15} />로그인됨</span></div><div className="github-profile"><span className="avatar large">{initial}</span><div><strong>{displayName}</strong><p>@{user.githubLogin}</p></div><span className="secondary-text">GitHub 인증 완료</span></div></section>
@@ -229,6 +282,6 @@ function DashboardContent({ databaseDesign, initialData, initialError }: { datab
       </div>}
     </main>
 
-    {selected && <dialog ref={dialogRef} className="detail-modal" aria-labelledby="detail-title" onCancel={() => setSelected(null)}><button type="button" className="modal-close icon-button" aria-label="취약점 상세 닫기" onClick={() => { dialogRef.current?.close(); setSelected(null); }}><Icon name="close" /></button><span className={`severity severity-${selected.severity}`}>{severityLabel[selected.severity]}</span><VulnerabilityDetail vulnerability={selected} repositoryName={repoName(selected.repositoryId)} /></dialog>}
+    {selected && <dialog ref={dialogRef} className="detail-modal" aria-labelledby="detail-title" onCancel={() => setSelected(null)}><div className="detail-modal-header"><span className={`severity severity-${selected.severity}`}>{severityLabel[selected.severity]}</span><button type="button" className="modal-close icon-button" aria-label="취약점 상세 닫기" onClick={() => { dialogRef.current?.close(); setSelected(null); }}><Icon name="close" /></button></div><div className="detail-modal-content"><VulnerabilityDetail key={selected.id} vulnerability={selected} repositoryName={repoName(selected.repositoryId)} aiSelection={data.aiSelection} onUpdated={() => void loadData().catch(() => {})} /></div></dialog>}
   </div>;
 }

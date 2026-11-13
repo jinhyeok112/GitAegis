@@ -7,12 +7,22 @@ import { ServiceError } from "@/lib/server/errors";
 import { aiText } from "@/lib/server/ai-json";
 import type { AiUsage } from "@/lib/server/openrouter";
 import { generateAiJson } from "@/lib/server/ai-generation";
-import { aiProviderConfigured, loadAiSelection } from "@/lib/server/ai-settings";
+import { loadAiSelection } from "@/lib/server/ai-settings";
 import { aiSelectionKey } from "@/lib/ai-models";
 import { assessUpgrade } from "@/lib/server/upgrade-assessment";
 import { remediationEvidenceKey } from "@/lib/server/remediation-evidence";
 
 export function parseStoredJson(value: unknown) { return typeof value === "string" ? JSON.parse(value) : value; }
+
+export function parseDependencyAssessment(value: unknown) {
+  const parsed = parseStoredJson(value);
+  if (!parsed) return parsed;
+  const assessment = { ...parsed };
+  delete assessment.modelSelection;
+  delete assessment.aiCandidateVersion;
+  delete assessment.aiReason;
+  return assessment;
+}
 
 export async function createRemediation(userId: string, vulnerabilityId: string, job?: { findingId: string; selection: AiModelSelection }) {
   const db = getDatabase();
@@ -30,22 +40,18 @@ export async function createRemediation(userId: string, vulnerabilityId: string,
       WHERE v.id = ? AND r.user_id = ?`, [job?.findingId ?? null, vulnerabilityId, userId]);
     const row = rows[0];
     if (!row) throw new ServiceError("VULNERABILITY_NOT_FOUND", "취약점 정보를 찾을 수 없습니다.", 404);
-    const selection = job?.selection ?? await loadAiSelection(userId, connection);
-    const generate = (instruction: string, evidence: unknown) => generateAiJson(selection, instruction, evidence, recordUsage);
-    const recordUsage = async (usage: AiUsage) => {
-      await connection.execute("INSERT INTO ai_usage_records (id, user_id, repository_id, vulnerability_id, feature, model_name, input_tokens, output_tokens, quantity, estimated_cost, currency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 'USD')", [randomUUID(), userId, row.repository_id, vulnerabilityId, row.source === "sast" ? "semgrep_remediation" : "dependency_version_evidence", usage.model, usage.inputTokens, usage.outputTokens, selection.provider === "openrouter" ? 0 : null]);
-    };
     if (row.source === "dependency") {
-      const previous = parseStoredJson(row.dependency_assessment);
-      if (!job && previous?.modelSelection && aiSelectionKey(previous.modelSelection) === aiSelectionKey(selection) && Date.now() - Date.parse(previous.checkedAt) < 60 * 60 * 1000) return { assessment: previous };
-      const assessment = await assessUpgrade({ name: row.dependency_name ?? "", ecosystem: row.dependency_ecosystem ?? "", version: row.installed_version ?? "" }, row.external_id ?? "", aiProviderConfigured(selection.provider) ? async evidence => {
-        const data = await generate('코드를 분석하지 마세요. 패키지 보안 공지와 NVD 근거에서 이 취약점을 수정한 버전 후보만 추출하세요. CVE 영향 범위 밖이라는 이유만으로 수정 버전을 확정하거나 버전 숫자를 임의로 증가시키지 마세요. 근거가 없으면 version=null. 형식: {"version": "x.y.z 또는 null", "reason": "근거 및 확인이 필요한 점"}. reason에 제공된 근거의 문구를 명시하세요.', evidence);
-        return { version: data.version === null ? null : aiText(data.version, 100), reason: aiText(data.reason, 2000) };
-      } : undefined);
-      assessment.modelSelection = selection;
+      const previous = parseDependencyAssessment(row.dependency_assessment);
+      if (!job && previous && Date.now() - Date.parse(previous.checkedAt) < 60 * 60 * 1000) return { assessment: previous };
+      const assessment = await assessUpgrade({ name: row.dependency_name ?? "", ecosystem: row.dependency_ecosystem ?? "", version: row.installed_version ?? "" }, row.external_id ?? "");
       await connection.execute("INSERT INTO finding_remediations (finding_id, dependency_assessment, checked_at) VALUES (?, ?, UTC_TIMESTAMP(3)) ON DUPLICATE KEY UPDATE dependency_assessment = VALUES(dependency_assessment), checked_at = UTC_TIMESTAMP(3)", [row.finding_id, JSON.stringify(assessment)]);
       return { assessment };
     }
+    const selection = job?.selection ?? await loadAiSelection(userId, connection);
+    const recordUsage = async (usage: AiUsage) => {
+      await connection.execute("INSERT INTO ai_usage_records (id, user_id, repository_id, vulnerability_id, feature, model_name, input_tokens, output_tokens, quantity, estimated_cost, currency) VALUES (?, ?, ?, ?, 'semgrep_remediation', ?, ?, ?, 1, ?, 'USD')", [randomUUID(), userId, row.repository_id, vulnerabilityId, usage.model, usage.inputTokens, usage.outputTokens, selection.provider === "openrouter" ? 0 : null]);
+    };
+    const generate = (instruction: string, evidence: unknown) => generateAiJson(selection, instruction, evidence, recordUsage);
     const beforeCode = row.code_context || row.code_snippet;
     const evidenceKey = remediationEvidenceKey({ rule: row.external_id ?? "", description: row.description ?? "", impact: row.impact ?? "", filePath: row.file_path ?? "", code: beforeCode ?? "", startLine: row.context_start_line ?? row.start_line ?? 1 });
     const previousSuggestion = parseStoredJson(row.ai_suggestion);

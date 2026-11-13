@@ -1,0 +1,13 @@
+.git
+.env*
+**/.env*
+.next
+.tools
+.vercel
+node_modules
+**/node_modules
+**/__pycache__
+*.log
+*.tsbuildinfo
+**/*.key
+**/*.pem

@@ -42,7 +42,7 @@ export default function AiModelSettings({ onSaved }: { onSaved: () => Promise<vo
   }
   const selected = settings?.models.find(option => aiSelectionKey(option) === draft);
   return <section className="panel ai-model-settings" aria-labelledby="ai-model-settings-title">
-    <div className="panel-heading"><div><h2 id="ai-model-settings-title">AI 수정안 모델</h2><p>Semgrep 탐지 결과의 수정안과 의존성 공지의 버전 근거 검토에 사용할 모델입니다.</p></div></div>
+    <div className="panel-heading"><div><h2 id="ai-model-settings-title">AI 수정안 모델</h2><p>Semgrep이 탐지한 코드의 수정안을 작성할 모델입니다. 의존성 업데이트 버전은 AI 없이 확인합니다.</p></div></div>
     {settings ? <>
       <label htmlFor="ai-model-choice">사용할 모델</label>
       <div className="ai-model-controls"><select id="ai-model-choice" value={draft} disabled={saving} onChange={event => { setDraft(event.target.value); setMessage(""); }}>

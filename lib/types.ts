@@ -5,7 +5,6 @@ export interface AiModelSelection { provider: "openrouter" | "gemini"; model: st
 export interface AiModelOption extends AiModelSelection { label: string; available: boolean }
 
 export interface UpgradeAssessment {
-  modelSelection?: AiModelSelection;
   status: "verified" | "unverified" | "no_candidate";
   recommendedVersion: string | null;
   checkedAt: string;
@@ -13,8 +12,6 @@ export interface UpgradeAssessment {
   knownAdvisoryIds: string[];
   skippedVersions: { version: string; advisoryIds: string[] }[];
   publishedFixedVersions: string[];
-  aiCandidateVersion: string | null;
-  aiReason: string | null;
   nvdStatus: "available" | "unavailable" | "no_cve";
   sources: string[];
   explanation: string;

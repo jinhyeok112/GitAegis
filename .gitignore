@@ -20,6 +20,7 @@ __pycache__/
 # Local environment files (keep the configuration template)
 .env*
 !.env.example
+!.env.oci.example
 
 # Deployment metadata
 .vercel/

@@ -159,4 +159,6 @@ npm run test:scan-safety
 
 ## OCI 이전
 
+앱·분석 도구·MySQL을 함께 설치하거나 DB 데이터까지 제거하는 절차는 [OCI Docker 배포 안내](docs/oci-docker.md)를 참고한다.
+
 OCI에서 MySQL 데이터를 백업·복원하고 동일 코드를 배포한다. `AUTH_URL`, DB 접속 정보, OAuth 콜백을 운영 도메인으로 변경하고 HTTPS를 구성한다. 토큰 복호화에 필요한 `GITHUB_TOKEN_ENCRYPTION_KEY`를 안전하게 이전한다. Ampere A1에서는 ARM64 호환 런타임과 분석 도구를 사용한다.

@@ -2,7 +2,7 @@ import "server-only";
 import type { RowDataPacket } from "mysql2";
 import type { ActivityDay, DashboardData, ScanPolicy } from "@/lib/types";
 import { getDatabase } from "@/lib/server/db";
-import { parseStoredJson } from "@/lib/server/remediation";
+import { parseDependencyAssessment, parseStoredJson } from "@/lib/server/remediation";
 import { defaultSelection, loadAiSelection } from "@/lib/server/ai-settings";
 
 function dateLabel(value: unknown) {
@@ -65,8 +65,8 @@ export async function loadDashboard(userId: string | null): Promise<DashboardDat
       filePath: row.file_path ?? null, startLine: row.start_line ?? null, endLine: row.end_line ?? null,
       code: row.code_snippet ?? null, status: row.status,
       codeContext: row.code_context ?? null, contextStartLine: row.context_start_line ?? null, contextEndLine: row.context_end_line ?? null,
-      ...(row.dependency_name ? { dependency: { packageName: row.dependency_name, ecosystem: row.dependency_ecosystem ?? "", installedVersion: row.installed_version ?? "미확인", affectedRange: row.affected_version_range ?? "미확인", fixedVersion: row.fixed_version ?? null, advisoryId: row.external_id ?? "", advisoryUrl: /^https?:\/\//.test(row.advisory_url ?? "") ? row.advisory_url : "", ...(row.dependency_assessment ? { assessment: parseStoredJson(row.dependency_assessment) } : {}) } } : {}),
-      ...(row.ai_suggestion ? { aiSuggestion: parseStoredJson(row.ai_suggestion) } : {}),
+      ...(row.dependency_name ? { dependency: { packageName: row.dependency_name, ecosystem: row.dependency_ecosystem ?? "", installedVersion: row.installed_version ?? "미확인", affectedRange: row.affected_version_range ?? "미확인", fixedVersion: row.fixed_version ?? null, advisoryId: row.external_id ?? "", advisoryUrl: /^https?:\/\//.test(row.advisory_url ?? "") ? row.advisory_url : "", ...(row.dependency_assessment ? { assessment: parseDependencyAssessment(row.dependency_assessment) } : {}) } } : {}),
+      ...(row.source !== "dependency" && row.ai_suggestion ? { aiSuggestion: parseStoredJson(row.ai_suggestion) } : {}),
     })),
     scans: scanRows.map(row => ({ id: String(row.id), repositoryId: String(row.repository_id), trigger: row.trigger_type, status: row.status, scope: row.scan_scope ?? "unknown", errorMessage: row.error_message ?? null, sastCount: Number(row.sast_count), cveCount: Number(row.dependency_count), commitSha: row.commit_sha ? String(row.commit_sha).slice(0, 7) : "—", startedAt: dateLabel(row.started_at ?? row.created_at) ?? "시각 없음" })),
     scanPolicies, activity: activityDays(activityRows),

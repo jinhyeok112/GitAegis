@@ -4,7 +4,7 @@ import type { RowDataPacket } from "mysql2";
 import type { PoolConnection } from "mysql2/promise";
 import { getDatabase, isDatabaseConfigured } from "@/lib/server/db";
 import { loadAiSelection } from "@/lib/server/ai-settings";
-import { createRemediation, parseStoredJson } from "@/lib/server/remediation";
+import { createRemediation, parseDependencyAssessment, parseStoredJson } from "@/lib/server/remediation";
 import { ServiceError } from "@/lib/server/errors";
 import { PREGENERATE_SCORE, shouldPregenerate } from "@/lib/remediation-policy";
 
@@ -12,7 +12,7 @@ export async function enqueueScanRemediations(connection: PoolConnection, userId
   const selection = await loadAiSelection(userId, connection);
   // No item-count cap: every eligible finding is queued. Generation is serial.
   await connection.execute(`INSERT IGNORE INTO remediation_jobs (id, finding_id, user_id, provider, model_id, priority)
-    SELECT UUID(), f.id, ?, ?, ?, 10 FROM scan_findings f JOIN vulnerabilities v ON v.id = f.vulnerability_id
+    SELECT UUID(), f.id, ?, IF(v.source = 'dependency', 'openrouter', ?), IF(v.source = 'dependency', 'none:dependency-check', ?), 10 FROM scan_findings f JOIN vulnerabilities v ON v.id = f.vulnerability_id
     LEFT JOIN finding_remediations m ON m.finding_id = f.id
     WHERE f.scan_id = ? AND v.status IN ('open', 'triaging')
       AND (v.severity_score >= ? OR (v.severity_score IS NULL AND v.severity IN ('high', 'critical')))
@@ -30,7 +30,7 @@ async function findingFor(userId: string, vulnerabilityId: string) {
 }
 
 function savedResult(row: RowDataPacket) {
-  return { ...(row.ai_suggestion ? { suggestion: parseStoredJson(row.ai_suggestion) } : {}), ...(row.dependency_assessment ? { assessment: parseStoredJson(row.dependency_assessment) } : {}) };
+  return { ...(row.source !== "dependency" && row.ai_suggestion ? { suggestion: parseStoredJson(row.ai_suggestion) } : {}), ...(row.dependency_assessment ? { assessment: parseDependencyAssessment(row.dependency_assessment) } : {}) };
 }
 
 export async function remediationState(userId: string, vulnerabilityId: string) {
@@ -44,7 +44,7 @@ export async function requestRemediationJob(userId: string, vulnerabilityId: str
   const saved = savedResult(row);
   if (!regenerate && (saved.suggestion || saved.assessment)) return { ...saved, state: "completed", error: null };
   if (row.source === "sast" && (!row.code_snippet || !row.file_path)) throw new ServiceError("MISSING_CODE_EVIDENCE", "Semgrep이 탐지한 코드와 위치 정보가 필요합니다.", 422);
-  const selection = await loadAiSelection(userId);
+  const selection = row.source === "dependency" ? { provider: "openrouter", model: "none:dependency-check" } : await loadAiSelection(userId);
   await getDatabase().execute(`INSERT INTO remediation_jobs (id, finding_id, user_id, provider, model_id, priority) VALUES (?, ?, ?, ?, ?, 20)
     ON DUPLICATE KEY UPDATE priority = 20,
       attempts = IF(? AND status IN ('failed', 'completed'), 0, attempts),

@@ -1,9 +1,21 @@
 import "server-only";
 
+export class SecurityHttpError extends Error {
+  constructor(public status: number, public body: unknown, public retryAfterMs: number | null) {
+    super(`Security service HTTP ${status}`);
+  }
+}
+
 // Only callers choose the fixed service origin. Never follow advisory redirects.
 export async function securityJson(url: string, init: RequestInit = {}, timeoutMs = 20000) {
   const response = await fetch(url, { ...init, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(timeoutMs) });
-  if (!response.ok) { await response.body?.cancel(); throw new Error(`Security service HTTP ${response.status}`); }
+  if (!response.ok) {
+    const retryAfter = response.headers.get("retry-after");
+    const milliseconds = retryAfter && /^\d+(\.\d+)?$/.test(retryAfter) ? Number(retryAfter) * 1000 : retryAfter ? Date.parse(retryAfter) - Date.now() : NaN;
+    let body: unknown = null;
+    try { body = await readSecurityJson(response); } catch { /* Error bodies may be empty or non-JSON. */ }
+    throw new SecurityHttpError(response.status, body, Number.isFinite(milliseconds) ? Math.max(0, milliseconds) : null);
+  }
   return readSecurityJson(response);
 }
 

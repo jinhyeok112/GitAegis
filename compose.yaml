@@ -1,0 +1,73 @@
+name: gitaegis
+
+services:
+  app:
+    build: .
+    image: gitaegis-app:local
+    init: true
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      AUTH_URL: ${AUTH_URL:?Set the public HTTPS URL in .env.oci}
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in .env.oci}
+      AUTH_GITHUB_ID: ${AUTH_GITHUB_ID:?Set AUTH_GITHUB_ID in .env.oci}
+      AUTH_GITHUB_SECRET: ${AUTH_GITHUB_SECRET:?Set AUTH_GITHUB_SECRET in .env.oci}
+      GITHUB_TOKEN_ENCRYPTION_KEY: ${GITHUB_TOKEN_ENCRYPTION_KEY:?Set GITHUB_TOKEN_ENCRYPTION_KEY in .env.oci}
+      MYSQL_HOST: db
+      MYSQL_PORT: "3306"
+      MYSQL_DATABASE: gitaegis
+      MYSQL_USER: gitaegis
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env.oci}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login', {redirect: 'error'}).then(response => { if (!response.ok) process.exitCode = 1; }).catch(() => { process.exitCode = 1; })"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: gitaegis
+      MYSQL_USER: gitaegis
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env.oci}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env.oci}
+      MYSQL_ROOT_HOST: localhost
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_PASSWORD\" mysql --protocol=TCP --host=127.0.0.1 --user=\"$$MYSQL_USER\" --database=\"$$MYSQL_DATABASE\" --execute='SELECT 1' >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    command:
+      - caddy
+      - reverse-proxy
+      - --from
+      - ${AUTH_URL:?Set the public HTTPS URL in .env.oci}
+      - --to
+      - app:3000
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  db_data:
+  caddy_data:
+  caddy_config:

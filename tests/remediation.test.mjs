@@ -48,12 +48,9 @@ test("skips a CVE's fixed version when another vulnerability affects it, selects
   assert.equal(result.nvdStatus, "unavailable");
 });
 
-test("missing fix data invokes AI, but an invented AI version cannot bypass registry and vulnerability checks", async () => {
+test("missing fix data still checks published versions and exact vulnerability results without AI", async () => {
   const api = fixture({ record: { ...advisory, affected: [] }, versions: ["1.0.1"] });
-  let called = false;
-  const result = await api.assessUpgrade(pkg, advisory.id, async evidence => { called = true; assert.equal(evidence.package.name, pkg.name); return { version: "9.9.9", reason: "unverified AI guess" }; });
-  assert.equal(called, true);
-  assert.equal(result.aiCandidateVersion, "9.9.9");
+  const result = await api.assessUpgrade(pkg, advisory.id);
   assert.equal(result.status, "no_candidate");
   assert.equal(result.recommendedVersion, null);
 });

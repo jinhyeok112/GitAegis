@@ -41,7 +41,7 @@ nano .env.oci
 - GitHub OAuth App에 같은 주소를 홈페이지로 설정하고, 콜백은 그 주소 뒤에 `/api/auth/callback/github`를 붙인다. Client ID와 Client Secret을 `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`에 넣는다. 기존 배포도 계속 쓴다면 운영용 OAuth App을 따로 두면 기존 콜백을 유지할 수 있다.
 - `AUTH_SECRET`, `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD`는 아래 첫 명령을 각각 실행해 별도 값으로 만든다. `GITHUB_TOKEN_ENCRYPTION_KEY`는 두 번째 명령으로 만든다. 기존 DB의 암호화된 GitHub 토큰을 가져온다면 기존 암호화 키를 그대로 사용한다.
 - AI 수정안을 쓰려면 `OPENROUTER_API_KEY` 또는 `GEMINI_API_KEY`를 넣는다.
-- 배포 후 분석 설정에서 **커밋 시 분석**을 켜면 서버가 GitHub 로그인 토큰으로 5분마다 새 커밋을 확인한다. 첫 조회를 기준으로 이후 변경된 최신 커밋부터 검사한다. [자동 검사 동작 안내](database-and-repositories.md#8-자동-검사)
+- 배포 후 분석 설정에서 **커밋 시 분석**을 켜면 서버가 GitHub 로그인 토큰으로 1분마다 새 커밋을 확인한다. 첫 조회를 기준으로 이후 변경된 최신 커밋부터 검사한다. [자동 검사 동작 안내](database-and-repositories.md#8-자동-검사)
 
 ```bash
 openssl rand -hex 32

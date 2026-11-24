@@ -78,9 +78,10 @@ export default function AnalysisSettings({ repositories, scans, policies, onSave
       <section className="panel analysis-form" aria-labelledby="analysis-form-title">
         <div className="panel-heading"><div><h2 id="analysis-form-title">{selected?.name} 분석 설정</h2><p>커밋 검사와 정기 분석을 각각 설정할 수 있습니다.</p></div></div>
         <div className="analysis-section">
-          <label className="analysis-toggle"><span><strong>커밋 시 분석</strong><small>5분마다 기본 브랜치를 확인하고, 기준 커밋 이후 변경이 있으면 최신 커밋을 검사합니다.</small></span><input type="checkbox" checked={draft.scanOnPush} onChange={event => change("scanOnPush", event.target.checked)} /></label>
+          <label className="analysis-toggle"><span><strong>커밋 시 분석</strong><small>1분마다 기본 브랜치를 확인하고, 기준 커밋 이후 변경이 있으면 최신 커밋을 검사합니다.</small></span><input type="checkbox" checked={draft.scanOnPush} onChange={event => change("scanOnPush", event.target.checked)} /></label>
           {selected?.commitCheckError && <p className="data-error" role="alert">{selected.commitCheckError}</p>}
           {selected?.lastCommitCheckAt && <p className="schedule-preview">최근 커밋 확인 {selected.lastCommitCheckAt}</p>}
+          {policies[selectedId]?.scanOnPush && <p className="schedule-preview">다음 커밋 확인 예정 <strong>{selected?.nextCommitCheckAt ?? "준비 중"}</strong> · 한국 시간</p>}
         </div>
         <div className="analysis-section">
           <label className="analysis-toggle"><span><strong>정기 분석</strong><small>커밋이 없어도 설정한 시각에 기본 브랜치를 다시 검사합니다.</small></span><input type="checkbox" checked={draft.scheduledEnabled} onChange={event => change("scheduledEnabled", event.target.checked)} /></label>

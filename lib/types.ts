@@ -27,6 +27,7 @@ export interface Repository {
   connected: boolean;
   lastScanAt: string | null;
   lastCommitCheckAt?: string | null;
+  nextCommitCheckAt?: string | null;
   commitCheckError?: string | null;
 }
 

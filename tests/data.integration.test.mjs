@@ -508,7 +508,9 @@ test("automatic scans poll commits without webhooks, preserve checkpoints, back 
   const [count] = await db.execute("SELECT COUNT(*) AS total FROM scans WHERE repository_id = ? AND trigger_type = 'push'", [id]);
   assert.equal(count[0].total, 1);
   const [pace] = await db.execute("SELECT TIMESTAMPDIFF(SECOND, checked_at, next_check_at) AS delay_seconds FROM repository_commit_checks WHERE repository_id = ?", [id]);
-  assert.equal(pace[0].delay_seconds, 300);
+  assert.equal(pace[0].delay_seconds, 60);
+  const dashboard = await (await request("/api/dashboard")).json();
+  assert.ok(dashboard.repositories.find(repo => repo.id === id).nextCommitCheckAt);
 
   await writeFile(commitFixture, JSON.stringify({ sha: pushed, status: 429, retryAfter: "900" }));
   await db.execute("UPDATE repository_commit_checks SET next_check_at = UTC_TIMESTAMP(3) WHERE repository_id = ?", [id]);

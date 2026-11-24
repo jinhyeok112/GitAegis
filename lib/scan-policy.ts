@@ -1,5 +1,7 @@
 import type { ScanPolicy } from "@/lib/types";
 
+export const COMMIT_CHECK_INTERVAL_SECONDS = 60;
+
 export const defaultScanPolicy: ScanPolicy = {
   scanOnPush: false,
   scheduledEnabled: false,

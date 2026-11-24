@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import type { RowDataPacket } from "mysql2";
-import { nextScheduledScan } from "@/lib/scan-policy";
+import { COMMIT_CHECK_INTERVAL_SECONDS, nextScheduledScan } from "@/lib/scan-policy";
 import { getDatabase, isDatabaseConfigured } from "@/lib/server/db";
 import { ServiceError } from "@/lib/server/errors";
 import { runNextAutomaticScan } from "@/lib/server/manual-scan";
@@ -24,7 +24,7 @@ export async function pollRepositoryCommit() {
     const repo = rows[0];
     if (!repo) return;
     // Persist a lease before making API calls, including if this process stops.
-    await connection.execute("UPDATE repository_commit_checks SET next_check_at = UTC_TIMESTAMP(3) + INTERVAL 5 MINUTE WHERE repository_id = ?", [repo.repository_id]);
+    await connection.execute("UPDATE repository_commit_checks SET next_check_at = TIMESTAMPADD(SECOND, ?, UTC_TIMESTAMP(3)) WHERE repository_id = ?", [COMMIT_CHECK_INTERVAL_SECONDS, repo.repository_id]);
     try {
       const current = await latestRepositoryCommit(String(repo.user_id), String(repo.github_repository_id), { branch: repo.branch_name, etag: repo.etag });
       await connection.beginTransaction();
@@ -42,7 +42,7 @@ export async function pollRepositoryCommit() {
       await connection.rollback();
       const message = error instanceof ServiceError ? error.message : "커밋 변경을 확인하지 못했습니다. 서버 연결 상태를 확인해 주세요.";
       await connection.execute(`UPDATE repository_commit_checks SET error_message = ?, next_check_at = TIMESTAMPADD(SECOND, ?, UTC_TIMESTAMP(3))
-        WHERE repository_id = ?`, [message, error instanceof GitHubPollError ? error.retryAfterSeconds : 300, repo.repository_id]);
+        WHERE repository_id = ?`, [message, error instanceof GitHubPollError ? error.retryAfterSeconds : COMMIT_CHECK_INTERVAL_SECONDS, repo.repository_id]);
       if (error instanceof GitHubPollError) {
         // The OAuth API budget is shared by every repository of the same user.
         await connection.execute(`UPDATE repository_commit_checks c JOIN repositories r ON r.id = c.repository_id

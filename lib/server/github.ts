@@ -3,6 +3,7 @@ import type { GitHubRepository } from "@/lib/types";
 import { getGitHubAccount } from "@/lib/server/github-account";
 import { ServiceError } from "@/lib/server/errors";
 import { writeFile } from "node:fs/promises";
+import { COMMIT_CHECK_INTERVAL_SECONDS } from "@/lib/scan-policy";
 
 type GitHubRepoResponse = {
   id: number;
@@ -80,7 +81,7 @@ export async function latestRepositoryCommit(userId: string, githubId: string, p
   const sha = response.status === 304 ? null : (await response.text()).trim();
   if (sha !== null && !/^[a-f0-9]{40}$/i.test(sha)) throw new ServiceError("INVALID_COMMIT", "기본 브랜치의 커밋을 확인하지 못했습니다.", 502);
   return { sha, branch: repo.defaultBranch, etag: response.headers.get("etag")?.slice(0, 255) ?? null,
-    pollSeconds: Math.max(300, Number(response.headers.get("x-poll-interval")) || 0) };
+    pollSeconds: Math.max(COMMIT_CHECK_INTERVAL_SECONDS, Number(response.headers.get("x-poll-interval")) || 0) };
 }
 
 export async function downloadRepositorySource(userId: string, githubId: string, archivePath: string, pushedSha?: string) {

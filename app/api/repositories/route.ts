@@ -17,7 +17,7 @@ export async function POST(request: Request) {
       const repo = await getAccessibleRepository(userId, body.githubRepositoryId);
       await getDatabase().execute("INSERT INTO repositories (id, user_id, github_repository_id, full_name, visibility, default_branch, connected, scan_on_push) VALUES (?, ?, ?, ?, ?, ?, TRUE, FALSE) ON DUPLICATE KEY UPDATE full_name = VALUES(full_name), visibility = VALUES(visibility), default_branch = VALUES(default_branch), connected = TRUE", [randomUUID(), userId, repo.githubId, repo.name, repo.visibility, repo.defaultBranch]);
     } else {
-      await getDatabase().execute("UPDATE repositories SET connected = FALSE WHERE user_id = ? AND github_repository_id = ?", [userId, body.githubRepositoryId]);
+      await getDatabase().execute("UPDATE repositories SET connected = FALSE, next_scheduled_at = NULL WHERE user_id = ? AND github_repository_id = ?", [userId, body.githubRepositoryId]);
     }
     return Response.json({ success: true }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return errorResponse(error); }

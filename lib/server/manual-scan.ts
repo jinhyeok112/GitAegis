@@ -2,7 +2,7 @@ import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
-import type { RowDataPacket } from "mysql2";
+import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import type { PoolConnection } from "mysql2/promise";
 import { getDatabase } from "@/lib/server/db";
 import { downloadRepositorySource } from "@/lib/server/github";
@@ -15,30 +15,62 @@ import { remediationEvidenceKey } from "@/lib/server/remediation-evidence";
 import { dependencyFindingTitle } from "@/lib/finding-titles.mjs";
 
 export async function runManualScan(userId: string, repositoryId: string) {
-  const db = getDatabase();
-  const [repositories] = await db.execute<RowDataPacket[]>("SELECT github_repository_id, connected FROM repositories WHERE id = ? AND user_id = ?", [repositoryId, userId]);
+  const [repositories] = await getDatabase().execute<RowDataPacket[]>("SELECT github_repository_id, connected FROM repositories WHERE id = ? AND user_id = ?", [repositoryId, userId]);
   if (!repositories[0]) throw new ServiceError("REPOSITORY_NOT_FOUND", "저장소를 찾을 수 없습니다.", 404);
   if (!repositories[0].connected) throw new ServiceError("REPOSITORY_DISCONNECTED", "저장소를 먼저 연결해 주세요.", 409);
-  const connection = await db.getConnection();
+  return withScanner(async connection => {
+    const scanId = randomUUID();
+    await connection.execute("INSERT INTO scans (id, repository_id, trigger_type, status, scan_scope, started_at) VALUES (?, ?, 'manual', 'running', 'sast', UTC_TIMESTAMP(3))", [scanId, repositoryId]);
+    return executeScan(connection, scanId, repositoryId, userId, String(repositories[0].github_repository_id));
+  });
+}
+
+export async function runNextAutomaticScan() {
+  return withScanner(async connection => {
+    const [rows] = await connection.execute<RowDataPacket[]>(`SELECT s.id, s.repository_id, s.commit_sha, r.user_id, r.github_repository_id
+      FROM scans s JOIN repositories r ON r.id = s.repository_id
+      WHERE s.status = 'queued' AND s.trigger_type IN ('push', 'schedule')
+      ORDER BY s.created_at, s.id LIMIT 1`);
+    const scan = rows[0];
+    if (!scan) return;
+
+    const [claimed] = await connection.execute<ResultSetHeader>(`UPDATE scans s JOIN repositories r ON r.id = s.repository_id
+      SET s.status = 'running', s.scan_scope = 'sast', s.started_at = UTC_TIMESTAMP(3)
+      WHERE s.id = ? AND s.status = 'queued' AND r.connected = TRUE
+      AND ((s.trigger_type = 'push' AND r.scan_on_push = TRUE) OR (s.trigger_type = 'schedule' AND r.scheduled_scan_enabled = TRUE))`, [scan.id]);
+    if (!claimed.affectedRows) {
+      await connection.execute("UPDATE scans SET status = 'canceled', completed_at = UTC_TIMESTAMP(3) WHERE id = ? AND status = 'queued'", [scan.id]);
+      return;
+    }
+    await executeScan(connection, String(scan.id), String(scan.repository_id), String(scan.user_id), String(scan.github_repository_id), scan.commit_sha ?? undefined);
+  });
+}
+
+async function withScanner<T>(run: (connection: PoolConnection) => Promise<T>) {
+  const connection = await getDatabase().getConnection();
   const lock = `gitaegis:scan:${createHash("sha256").update(process.env.MYSQL_DATABASE || "").digest("hex").slice(0, 24)}`;
-  const scanId = randomUUID();
-  const workRoot = resolve(process.cwd(), ".tools", "scans");
   let acquired = false;
-  let created = false;
-  let work: string | undefined;
   try {
     const [locks] = await connection.execute<RowDataPacket[]>("SELECT GET_LOCK(?, 0) AS acquired", [lock]);
-    if (Number(locks[0].acquired) !== 1) throw new ServiceError("SCANNER_BUSY", "다른 수동 검사가 진행 중입니다. 완료 후 다시 시도해 주세요.", 409);
+    if (Number(locks[0].acquired) !== 1) throw new ServiceError("SCANNER_BUSY", "다른 검사가 진행 중입니다. 완료 후 다시 시도해 주세요.", 409);
     acquired = true;
-    // A live worker holds the DB lock. Leftover running rows belong to a worker
-    // that stopped before finishing, and must not appear to run forever.
-    await connection.execute("UPDATE scans SET status = 'failed', error_message = '서버가 재시작되어 검사가 중단되었습니다.', completed_at = UTC_TIMESTAMP(3) WHERE trigger_type = 'manual' AND status IN ('queued', 'running')");
-    await connection.execute("INSERT INTO scans (id, repository_id, trigger_type, status, scan_scope, started_at) VALUES (?, ?, 'manual', 'running', 'sast', UTC_TIMESTAMP(3))", [scanId, repositoryId]);
-    created = true;
+    // Any running row left after taking the lock belongs to an interrupted scan.
+    await connection.execute("UPDATE scans SET status = 'failed', error_message = '서버가 재시작되어 검사가 중단되었습니다.', completed_at = UTC_TIMESTAMP(3) WHERE status = 'running' OR (trigger_type = 'manual' AND status = 'queued')");
+    return await run(connection);
+  } finally {
+    if (acquired) await connection.execute("SELECT RELEASE_LOCK(?)", [lock]).catch(() => {});
+    connection.release();
+  }
+}
+
+async function executeScan(connection: PoolConnection, scanId: string, repositoryId: string, userId: string, githubId: string, pushedSha?: string) {
+  const workRoot = resolve(process.cwd(), ".tools", "scans");
+  let work: string | undefined;
+  try {
     await mkdir(workRoot, { recursive: true });
     work = await mkdtemp(join(workRoot, "run-"));
     const archive = join(work, "repository.tar.gz");
-    const sha = await downloadRepositorySource(userId, String(repositories[0].github_repository_id), archive);
+    const sha = await downloadRepositorySource(userId, githubId, archive, pushedSha);
     await connection.execute("UPDATE scans SET commit_sha = ? WHERE id = ?", [sha, scanId]);
     const { findings, dependencies } = await analyzeArchive(archive, work);
     const scope = dependencies.checked ? "sast_dependency" : "sast";
@@ -52,12 +84,10 @@ export async function runManualScan(userId: string, repositoryId: string) {
     } catch (error) { await connection.rollback(); throw error; }
     return { scanId, status: "completed", findings: findings.length + dependencies.findings.length, sastCount: findings.length, dependencyCount: dependencies.findings.length, commitSha: sha, scope };
   } catch (error) {
-    if (created) await connection.execute("UPDATE scans SET status = 'failed', error_message = ?, completed_at = UTC_TIMESTAMP(3) WHERE id = ?", [error instanceof ServiceError ? error.message : "검사를 완료하지 못했습니다. GitHub 연결과 검사 실행기 상태를 확인해 주세요.", scanId]);
+    await connection.execute("UPDATE scans SET status = 'failed', error_message = ?, completed_at = UTC_TIMESTAMP(3) WHERE id = ?", [error instanceof ServiceError ? error.message : "검사를 완료하지 못했습니다. GitHub 연결과 검사 실행기 상태를 확인해 주세요.", scanId]);
     if (error instanceof ServiceError) throw error;
     throw new ServiceError("SCAN_FAILED", "검사를 완료하지 못했습니다. GitHub 연결과 검사 실행기 상태를 확인해 주세요.", 502);
   } finally {
-    if (acquired) await connection.execute("SELECT RELEASE_LOCK(?)", [lock]).catch(() => {});
-    connection.release();
     // Delete only the temporary directory created by this invocation.
     if (work && dirname(work) === workRoot && work.startsWith(`${workRoot}${sep}run-`)) await rm(work, { recursive: true, force: true }).catch(() => {});
   }

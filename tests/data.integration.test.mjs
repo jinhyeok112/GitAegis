@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { randomUUID, randomBytes, createCipheriv, createHash } from "node:crypto";
 import { createRequire } from "node:module";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { before, after, test } from "node:test";
 import mysql from "mysql2/promise";
 import { encode } from "next-auth/jwt";
@@ -12,6 +14,8 @@ require("@next/env").loadEnvConfig(process.cwd());
 const database = `gitaegis_test_${randomBytes(6).toString("hex")}`;
 const secret = randomBytes(32).toString("base64url");
 const encryptionKey = randomBytes(32);
+let fixtureDirectory;
+let commitFixture;
 const userId = randomUUID();
 const otherUserId = randomUUID();
 const otherRepositoryId = randomUUID();
@@ -31,7 +35,7 @@ function encryptedToken(value) {
 }
 
 function runApp(overrides = {}) {
-  return startApp({ secret, githubFixture: true, overrides: { MYSQL_DATABASE: database, GITHUB_TOKEN_ENCRYPTION_KEY: encryptionKey.toString("base64url"), OPENROUTER_API_KEY: "test-only-openrouter-key", OPENROUTER_MODEL: "nvidia/nemotron-3-ultra-550b-a55b:free", GEMINI_API_KEY: "test-only-gemini-key", ...overrides } });
+  return startApp({ secret, githubFixture: true, overrides: { MYSQL_DATABASE: database, GITHUB_TOKEN_ENCRYPTION_KEY: encryptionKey.toString("base64url"), GITAEGIS_TEST_COMMIT_FILE: commitFixture, OPENROUTER_API_KEY: "test-only-openrouter-key", OPENROUTER_MODEL: "nvidia/nemotron-3-ultra-550b-a55b:free", GEMINI_API_KEY: "test-only-gemini-key", ...overrides } });
 }
 
 function request(path, options = {}) {
@@ -61,6 +65,9 @@ async function completedRemediation(path) {
 }
 
 before(async () => {
+  fixtureDirectory = await mkdtemp(join(tmpdir(), "gitaegis-commit-test-"));
+  commitFixture = join(fixtureDirectory, "commit.json");
+  await writeFile(commitFixture, JSON.stringify({ sha: "a".repeat(40) }));
   assert.match(database, /^gitaegis_test_[a-f0-9]{12}$/);
   db = await mysql.createConnection({ host: process.env.MYSQL_HOST || "127.0.0.1", port: Number(process.env.MYSQL_PORT || 3306), user: process.env.MYSQL_USER, password: process.env.MYSQL_PASSWORD || "", multipleStatements: true });
   await db.query(`CREATE DATABASE \`${database}\` CHARACTER SET utf8mb4`);
@@ -82,6 +89,7 @@ after(async () => {
     await db.query(`DROP DATABASE IF EXISTS \`${database}\``);
     await db.end();
   }
+  if (fixtureDirectory) await rm(fixtureDirectory, { recursive: true, force: true });
 });
 
 test("data endpoints require login and mutations reject cross-site origins", async () => {
@@ -466,4 +474,65 @@ test("failed automatic generation is persisted without repeated provider calls; 
   const result = await response.json();
   assert.equal(result.state, "completed");
   assert.match(result.suggestion.afterCode, /true/);
+});
+
+test("automatic scans poll commits without webhooks, preserve checkpoints, back off errors, and execute a due Seoul schedule", async () => {
+  const id = randomUUID();
+  await db.execute(`INSERT INTO repositories (id, user_id, github_repository_id, full_name, visibility, default_branch, scan_on_push)
+    VALUES (?, ?, 104, 'integration-owner/repository-104', 'private', 'main', TRUE)`, [id, userId]);
+  await waitFor(async () => {
+    const [rows] = await db.execute("SELECT commit_sha FROM repository_commit_checks WHERE repository_id = ?", [id]);
+    return rows[0]?.commit_sha === "a".repeat(40);
+  }, "Initial baseline was not saved");
+  const [empty] = await db.execute("SELECT id FROM scans WHERE repository_id = ?", [id]);
+  assert.equal(empty.length, 0);
+  const pushed = "b".repeat(40);
+  await writeFile(commitFixture, JSON.stringify({ sha: pushed }));
+  await db.execute("UPDATE repository_commit_checks SET next_check_at = UTC_TIMESTAMP(3) WHERE repository_id = ?", [id]);
+  await waitFor(async () => {
+    const [rows] = await db.execute("SELECT status, commit_sha, sast_count FROM scans WHERE repository_id = ? AND trigger_type = 'push'", [id]);
+    if (!rows.length) return false;
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].commit_sha, pushed);
+    assert.notEqual(rows[0].status, "failed");
+    return rows[0].status === "completed" && rows[0].sast_count > 0;
+  }, "Push scan did not complete through Semgrep");
+
+  await app.stop();
+  app = await runApp();
+  await db.execute("UPDATE repository_commit_checks SET checked_at = NULL, next_check_at = UTC_TIMESTAMP(3) WHERE repository_id = ?", [id]);
+  await waitFor(async () => {
+    const [rows] = await db.execute("SELECT checked_at FROM repository_commit_checks WHERE repository_id = ?", [id]);
+    return rows[0]?.checked_at;
+  }, "Unchanged commit was not checked after restart");
+  const [count] = await db.execute("SELECT COUNT(*) AS total FROM scans WHERE repository_id = ? AND trigger_type = 'push'", [id]);
+  assert.equal(count[0].total, 1);
+  const [pace] = await db.execute("SELECT TIMESTAMPDIFF(SECOND, checked_at, next_check_at) AS delay_seconds FROM repository_commit_checks WHERE repository_id = ?", [id]);
+  assert.equal(pace[0].delay_seconds, 300);
+
+  await writeFile(commitFixture, JSON.stringify({ sha: pushed, status: 429, retryAfter: "900" }));
+  await db.execute("UPDATE repository_commit_checks SET next_check_at = UTC_TIMESTAMP(3) WHERE repository_id = ?", [id]);
+  await waitFor(async () => {
+    const [rows] = await db.execute("SELECT error_message, commit_sha, TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(3), next_check_at) AS remaining FROM repository_commit_checks WHERE repository_id = ?", [id]);
+    if (!rows[0]?.error_message) return false;
+    assert.equal(rows[0].commit_sha, pushed);
+    assert.ok(rows[0].remaining > 850);
+    return true;
+  }, "Rate limit did not preserve baseline and defer polling");
+  await writeFile(commitFixture, JSON.stringify({ sha: pushed }));
+
+  const daily = { ...policy, scanOnPush: false, time: "00:15" };
+  assert.equal((await request(`/api/repositories/${id}/policy`, { method: "PUT", body: JSON.stringify(daily) })).status, 200);
+  const [settings] = await db.execute("SELECT DATE_FORMAT(next_scheduled_at, '%H:%i') AS next_slot_utc FROM repositories WHERE id = ?", [id]);
+  assert.equal(settings[0].next_slot_utc, "15:15");
+  await db.execute("UPDATE repositories SET next_scheduled_at = UTC_TIMESTAMP(3) - INTERVAL 3 DAY WHERE id = ?", [id]);
+  await waitFor(async () => {
+    const [rows] = await db.execute("SELECT status, commit_sha FROM scans WHERE repository_id = ? AND trigger_type = 'schedule'", [id]);
+    assert.ok(rows.length <= 1);
+    if (!rows[0]) return false;
+    assert.notEqual(rows[0].status, "failed");
+    return rows[0].status === "completed" && rows[0].commit_sha === pushed;
+  }, "Due scheduled scan did not complete");
+  const [next] = await db.execute("SELECT next_scheduled_at > UTC_TIMESTAMP(3) AS planned FROM repositories WHERE id = ?", [id]);
+  assert.equal(next[0].planned, 1);
 });

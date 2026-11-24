@@ -31,7 +31,7 @@ export async function loadDashboard(userId: string | null): Promise<DashboardDat
   };
   const db = getDatabase();
   const [[repositoryRows], [findingRows], [scanRows], [accountRows], [subscriptionRows], [usageRows], [activityRows], aiSelection] = await Promise.all([
-    db.execute<RowDataPacket[]>("SELECT r.*, (SELECT MAX(s.started_at) FROM scans s WHERE s.repository_id = r.id) AS last_scan_at FROM repositories r WHERE r.user_id = ? ORDER BY r.connected DESC, r.full_name", [userId]),
+    db.execute<RowDataPacket[]>("SELECT r.*, c.checked_at AS last_commit_check_at, c.error_message AS commit_check_error, (SELECT MAX(s.started_at) FROM scans s WHERE s.repository_id = r.id) AS last_scan_at FROM repositories r LEFT JOIN repository_commit_checks c ON c.repository_id = r.id WHERE r.user_id = ? ORDER BY r.connected DESC, r.full_name", [userId]),
     db.execute<RowDataPacket[]>(`SELECT v.*, f.file_path, f.start_line, f.end_line, f.code_snippet, f.code_context, f.context_start_line, f.context_end_line, f.dependency_name, f.dependency_ecosystem, f.installed_version, f.affected_version_range, f.fixed_version, f.advisory_url, m.dependency_assessment, m.ai_suggestion
       FROM vulnerabilities v JOIN repositories r ON r.id = v.repository_id
       LEFT JOIN scan_findings f ON f.id = (SELECT f2.id FROM scan_findings f2 WHERE f2.vulnerability_id = v.id ORDER BY f2.created_at DESC, f2.id DESC LIMIT 1)
@@ -55,7 +55,7 @@ export async function loadDashboard(userId: string | null): Promise<DashboardDat
   const subscription = subscriptionRows[0];
   return {
     aiSelection,
-    repositories: repositoryRows.map(row => ({ id: String(row.id), githubId: String(row.github_repository_id), name: String(row.full_name), url: `https://github.com/${row.full_name}`, visibility: row.visibility, connected: Boolean(row.connected), lastScanAt: dateLabel(row.last_scan_at) })),
+    repositories: repositoryRows.map(row => ({ id: String(row.id), githubId: String(row.github_repository_id), name: String(row.full_name), url: `https://github.com/${row.full_name}`, visibility: row.visibility, connected: Boolean(row.connected), lastScanAt: dateLabel(row.last_scan_at), lastCommitCheckAt: dateLabel(row.last_commit_check_at), commitCheckError: row.commit_check_error ?? null })),
     vulnerabilities: findingRows.map(row => ({
       id: String(row.id), repositoryId: String(row.repository_id), severity: row.severity, title: row.title,
       severityScore: row.severity_score == null ? null : Number(row.severity_score),

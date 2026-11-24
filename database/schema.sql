@@ -52,7 +52,7 @@ CREATE TABLE repositories (
   full_name VARCHAR(255) NOT NULL,
   visibility ENUM('public', 'private') NOT NULL,
   connected BOOLEAN NOT NULL DEFAULT TRUE,
-  scan_on_push BOOLEAN NOT NULL DEFAULT TRUE,
+  scan_on_push BOOLEAN NOT NULL DEFAULT FALSE,
   scheduled_scan_enabled BOOLEAN NOT NULL DEFAULT FALSE,
   scheduled_scan_frequency ENUM('daily', 'weekly') NOT NULL DEFAULT 'weekly',
   scheduled_scan_weekday TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '월요일=1, 일요일=7; 주간 검사에서 사용',
@@ -67,6 +67,18 @@ CREATE TABLE repositories (
   KEY idx_repositories_user_connected (user_id, connected),
   KEY idx_repositories_next_scheduled (scheduled_scan_enabled, next_scheduled_at),
   CONSTRAINT chk_repositories_scan_weekday CHECK (scheduled_scan_weekday BETWEEN 1 AND 7)
+);
+
+CREATE TABLE repository_commit_checks (
+  repository_id CHAR(36) PRIMARY KEY,
+  commit_sha CHAR(40) NULL,
+  branch_name VARCHAR(255) NULL,
+  etag VARCHAR(255) NULL,
+  next_check_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  checked_at DATETIME(3) NULL,
+  error_message VARCHAR(1000) NULL,
+  CONSTRAINT fk_commit_checks_repository FOREIGN KEY (repository_id) REFERENCES repositories(id),
+  KEY idx_commit_checks_next (next_check_at)
 );
 
 CREATE TABLE scans (

@@ -106,7 +106,7 @@ python -m venv .tools/semgrep
 
 기본 경로는 Windows의 `Scripts`, Linux의 `bin`을 자동 선택한다. 다른 위치에 설치하면 `.env.local`의 `SEMGREP_EXECUTABLE`, `SCAN_PYTHON_EXECUTABLE`에 실행 파일 절대 경로를 지정한다. 서버 사용자에게 실행 권한과 `.tools/scans` 쓰기 권한이 필요하다. 배포에는 `scripts/extract_scan_source.py`, `security_rules/manual.yaml`, `security_fixtures/cases.yaml`도 포함한다. OCI ARM64에서 설치·실행 검증은 별도로 필요하다.
 
-현재 검사는 POST 요청 동안 동기 실행한다. Next 경로의 `maxDuration`은 180초이며 운영 프록시의 요청 제한도 이에 맞춰야 한다. 서버 중단은 진행 중 검사를 멈출 수 있다. 푸시·정기 자동 검사는 후속 구현 범위다. 수정안 생성은 아래의 별도 백그라운드 대기열을 사용한다.
+수동 검사는 POST 요청 동안 동기 실행한다. Next 경로의 `maxDuration`은 180초이며 운영 프록시의 요청 제한도 이에 맞춰야 한다. [커밋·정기 검사](database-and-repositories.md#8-자동-검사)는 데이터베이스에 요청을 저장하고 상시 실행 서버에서 같은 검사 엔진을 사용한다. 수정안 생성은 아래의 별도 백그라운드 대기열을 사용한다.
 
 ## 검증
 

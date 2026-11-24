@@ -157,11 +157,14 @@ function DashboardContent({ databaseDesign, initialData, initialError, githubRec
   const packageFindings = needsReview.filter(item => item.dependency);
   const activeScans = scans.filter(scan => scan.status === "queued" || scan.status === "running");
   const polling = activeScans.length > 0 || scanningRepository !== null;
+  const automaticScansEnabled = connectedRepositories.some(repo => scanPolicies[repo.id]?.scanOnPush || scanPolicies[repo.id]?.scheduledEnabled);
   useEffect(() => {
-    if (!polling) return;
-    const timer = window.setInterval(() => { void loadData().catch(() => {}); }, 2500);
+    if (!polling && !automaticScansEnabled) return;
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void loadData().catch(() => {});
+    }, polling ? 2500 : 15000);
     return () => window.clearInterval(timer);
-  }, [polling, loadData]);
+  }, [polling, automaticScansEnabled, loadData]);
   const filteredScans = scans.filter(scan => selectableRepositories.some(repo => repo.id === scan.repositoryId) && (repositoryId === "all" || scan.repositoryId === repositoryId)).sort((a, b) => Number(!repositories.find(repo => repo.id === a.repositoryId)?.connected) - Number(!repositories.find(repo => repo.id === b.repositoryId)?.connected));
 
   function navigate(next: View) { setView(next); setSearch(""); if (next === "vulnerabilities") setFindingKind("all"); if (next === "repositories" && data?.github.connected) void loadGitHubRepositories(); }

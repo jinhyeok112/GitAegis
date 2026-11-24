@@ -74,7 +74,17 @@ globalThis.fetch = async (input, init) => {
     const page = Number(url.searchParams.get("page"));
     return Response.json(page === 1 ? Array.from({ length: 100 }, (_, i) => repository(i + 1)) : page === 2 ? [repository(101)] : []);
   }
-  if (/^\/repos\/integration-owner\/repository-\d+\/commits\/main$/.test(url.pathname)) return Response.json({ sha: "a".repeat(40) });
+  if (/^\/repos\/integration-owner\/repository-\d+\/commits\/main$/.test(url.pathname)) {
+    const state = url.pathname.includes("repository-104/") && process.env.GITAEGIS_TEST_COMMIT_FILE
+      ? JSON.parse(readFileSync(process.env.GITAEGIS_TEST_COMMIT_FILE, "utf8")) : { sha: "a".repeat(40) };
+    if (state.status) return Response.json({ message: "Fixture request limited" }, { status: state.status, headers: { "retry-after": state.retryAfter } });
+    if (headers.get("accept") === "application/vnd.github.sha") {
+      const etag = `"${state.sha}"`;
+      if (headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers: { etag } });
+      return new Response(state.sha, { headers: { etag } });
+    }
+    return Response.json({ sha: state.sha });
+  }
   if (/^\/repos\/integration-owner\/repository-\d+\/tarball\/[a-f0-9]{40}$/.test(url.pathname)) {
     if (url.pathname.includes("repository-102/")) return new Response("invalid archive");
     const repositoryNumber = url.pathname.match(/repository-(\d+)/)[1];

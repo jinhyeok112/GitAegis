@@ -26,6 +26,8 @@ export interface Repository {
   visibility: "public" | "private";
   connected: boolean;
   lastScanAt: string | null;
+  lastCommitCheckAt?: string | null;
+  commitCheckError?: string | null;
 }
 
 export interface Vulnerability {
